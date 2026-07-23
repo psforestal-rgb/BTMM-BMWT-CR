@@ -1,4 +1,4 @@
-const CACHE_NAME = "btmm-bmwt-cr-v6-trip-workflow";
+const CACHE_NAME = "btmm-bmwt-cr-v7-map-workflow";
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,6 +7,8 @@ const ASSETS = [
   "./app.js",
   "./manifest.webmanifest",
   "./icon.svg",
+  "./vendor/leaflet.css",
+  "./vendor/leaflet.js",
   "./vendor/proj4.js",
   "./vendor/jszip.min.js"
 ];
@@ -84,6 +86,20 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   const requestUrl = new URL(event.request.url);
+  const isImageryTile = requestUrl.hostname === "server.arcgisonline.com";
+  if (isImageryTile) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((response) => {
+          const copy = response.clone();
+          caches.open("btmm-map-tiles-v1").then((cache) => cache.put(event.request, copy));
+          return response;
+        });
+      })
+    );
+    return;
+  }
   if (requestUrl.origin !== self.location.origin) return;
 
   event.respondWith(

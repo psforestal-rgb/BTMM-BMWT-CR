@@ -12,9 +12,11 @@ grandes se adapta a una distribución de dos columnas.
 
 - Flujo secuencial de campo: datos preliminares, bloqueo contra edición accidental y continuación al mapa operativo.
 - Mapa mobile-first con Esri World Imagery, ubicación GPS actual, círculo de precisión, zoom y puntos guardados de macroinvertebrados, caudal y referencias.
+- Descarga de la extensión aérea visible en un ZIP con PNG, PGW, PRJ, GeoJSON y metadatos; la imagen queda georreferenciada en EPSG:3857 y conserva la atribución de Esri World Imagery.
 - Botón flotante (+) con tres alternativas: Caudal, Macroinvertebrados y Cierre de gira.
 - Los formularios se abren como hojas de trabajo sobre el mapa; la clave dicotómica forma parte del módulo Macroinvertebrados.
 - Las teselas de imagen ya visitadas se conservan en caché cuando el navegador y el espacio disponible lo permiten; la cobertura aérea completa requiere conexión.
+- El botón **Continuar** bloquea automáticamente los datos preliminares si aún no se pulsó **Bloquear edición**, de modo que el flujo no queda detenido en un botón deshabilitado.
 - Inicio de gira con expediente, fecha y hora automáticas, participantes estructurados, área silvestre protegida, cuerpo de agua, condición meteorológica inicial y observaciones.
 - Cierre separado con hora final, condiciones meteorológicas imperantes y observaciones finales.
 - Coordenadas en todos los puntos de observación, macroinvertebrados y perfil:

@@ -1214,6 +1214,19 @@ body.map-mode main {
 
 #mapBackup { display: none; }
 
+.map-download-button {
+  grid-column: 1 / -1;
+  min-height: 42px !important;
+  color: #fff;
+  border-color: var(--brand-2);
+  background: var(--brand-2);
+}
+
+.map-download-button:disabled {
+  cursor: wait;
+  opacity: .8;
+}
+
 .map-location-readout {
   min-width: 0;
   display: grid;
@@ -1469,9 +1482,10 @@ body.map-mode main {
   .map-toolbar {
     right: 18px;
     left: 18px;
-    grid-template-columns: auto minmax(220px, 1fr) 48px auto;
+    grid-template-columns: auto minmax(220px, 1fr) 48px auto auto;
   }
 
+  .map-download-button { grid-column: auto; }
   #mapBackup { display: block; }
 
   .record-menu-backdrop { align-items: center; }

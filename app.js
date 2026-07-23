@@ -12,91 +12,11 @@ proj4.defs(
   "+proj=tmerc +lat_0=0 +lon_0=-84 +k=0.9999 +x_0=500000 +y_0=0 +ellps=GRS80 +towgs84=0.16959,-0.35312,-0.51846,-0.03385,0.16325,-0.03446,0.03693 +units=m +no_defs +type=crs"
 );
 
-const BMWP_CR = {
-  Perlidae: 10, Oligoneuriidae: 10, Odontoceridae: 10, Calamoceratidae: 10,
-  Leptophlebiidae: 9, Leptoceridae: 9, Helicopsychidae: 9, Philopotamidae: 9,
-  Euthyplociidae: 9, Glossosomatidae: 9, Psephenidae: 8, Hydrobiosidae: 8,
-  Corydalidae: 8, Gomphidae: 8, Polycentropodidae: 8, Xiphocentronidae: 8,
-  Baetidae: 7, Leptohyphidae: 7, Hydropsychidae: 7, Elmidae: 7,
-  Aeshnidae: 7, Libellulidae: 7, Naucoridae: 7, Veliidae: 6, Gerridae: 6,
-  Gyrinidae: 6, Dryopidae: 6, Lutrochidae: 6, Hydroptilidae: 6,
-  Simuliidae: 5, Tipulidae: 5, Ceratopogonidae: 5, Tabanidae: 5,
-  Belostomatidae: 5, Corixidae: 5, Planorbidae: 3, Physidae: 3,
-  Chironomidae: 2, Culicidae: 2, Psychodidae: 2, Syrphidae: 1,
-  Tubificidae: 1, Glossiphoniidae: 1
-};
-
-const ID_TAXA = [
-  {
-    order: "Ephemeroptera",
-    families: "Baetidae, Leptophlebiidae, Leptohyphidae, Oligoneuriidae, Euthyplociidae",
-    traits: { patas: "6", colas: ["2", "3"], concha: "no", estuche: "no", branquias: "yes", filamentos: "no" },
-    diagnostic: "Ninfa con 2–3 cercos y branquias visibles en los segmentos abdominales. La familia requiere observar branquias, patas, boca y forma corporal."
-  },
-  {
-    order: "Plecoptera",
-    families: "Perlidae",
-    traits: { patas: "6", colas: "2", concha: "no", estuche: "no", branquias: "no", filamentos: "no" },
-    diagnostic: "Ninfa alargada con dos cercos; sin branquias laminares abdominales. En Perlidae pueden observarse branquias ramificadas en tórax o base de patas."
-  },
-  {
-    order: "Trichoptera",
-    families: "Calamoceratidae, Glossosomatidae, Helicopsychidae, Hydrobiosidae, Hydropsychidae, Hydroptilidae, Leptoceridae, Odontoceridae, Philopotamidae, Polycentropodidae, Xiphocentronidae",
-    traits: { patas: "6", colas: "0", concha: "no", branquias: "no", filamentos: "no", rasgo: "hooks" },
-    diagnostic: "Larva con cabeza endurecida, tres pares de patas y dos falsas patas terminales con ganchos. Algunas familias construyen estuches; otras viven libres o en redes."
-  },
-  {
-    order: "Odonata",
-    families: "Aeshnidae, Gomphidae, Libellulidae",
-    traits: { patas: "6", colas: "0", concha: "no", estuche: "no", branquias: "no", filamentos: "no", rasgo: "mask" },
-    diagnostic: "Ninfa robusta con ojos grandes y labio inferior extensible tipo máscara. Las branquias externas en forma de tres hojas indican Zygoptera, no estas familias de Anisoptera."
-  },
-  {
-    order: "Coleoptera",
-    families: "Dryopidae, Elmidae, Gyrinidae, Lutrochidae, Psephenidae",
-    traits: { patas: "6", colas: "0", concha: "no", estuche: "no", branquias: "no" },
-    diagnostic: "Larvas o adultos con cabeza definida y piezas bucales masticadoras; cuerpo y endurecimiento variables. Psephenidae suele ser aplanada y discoidal."
-  },
-  {
-    order: "Diptera",
-    families: "Ceratopogonidae, Chironomidae, Culicidae, Psychodidae, Simuliidae, Syrphidae, Tabanidae, Tipulidae",
-    traits: { patas: "0", colas: "0", concha: "no", estuche: "no", branquias: "no", rasgo: "worm" },
-    diagnostic: "Larva vermiforme sin patas torácicas articuladas. Las falsas patas, cápsula cefálica, sifones, discos y extremo posterior separan familias."
-  },
-  {
-    order: "Diptera",
-    families: "Simuliidae",
-    traits: { patas: "0", colas: "0", concha: "no", estuche: "no", branquias: "no", rasgo: "sucker" },
-    diagnostic: "Larva con cuerpo ensanchado posteriormente, abanicos cefálicos y disco adhesivo terminal; frecuente en corriente."
-  },
-  {
-    order: "Hemiptera",
-    families: "Belostomatidae, Corixidae, Gerridae, Naucoridae, Veliidae",
-    traits: { patas: "6", colas: "0", concha: "no", estuche: "no", branquias: "no", filamentos: "no", rasgo: "beak" },
-    diagnostic: "Ninfa o adulto con pico perforador ventral. La forma de patas, antenas y cuerpo ayuda a separar familias acuáticas y semiaquáticas."
-  },
-  {
-    order: "Megaloptera",
-    families: "Corydalidae",
-    traits: { patas: "6", colas: "0", concha: "no", estuche: "no", branquias: "no", filamentos: "yes" },
-    diagnostic: "Larva grande con mandíbulas, filamentos laterales a lo largo del abdomen y dos falsas patas anales con ganchos."
-  },
-  {
-    order: "Annelida",
-    families: "Glossiphoniidae, Tubificidae",
-    traits: { patas: "0", colas: "0", concha: "no", estuche: "no", branquias: "no", filamentos: "no", rasgo: "worm" },
-    diagnostic: "Cuerpo segmentado sin patas articuladas. Las sanguijuelas presentan ventosas; los oligoquetos son vermiformes y carecen de cápsula cefálica."
-  },
-  {
-    order: "Mollusca",
-    families: "Physidae, Planorbidae",
-    traits: { patas: "0", colas: "0", concha: "yes", estuche: "no", branquias: "no", filamentos: "no" },
-    diagnostic: "Gasterópodo con concha. Planorbidae suele tener enrollamiento plano; Physidae presenta concha alta y sinistral."
-  }
-];
-
 let state = loadState();
-let lastCandidates = [];
+let keyNodeId = "start";
+let keyHistory = [];
+let keyResult = null;
+let keyUnknown = "";
 const photoQueues = new Map();
 let mediaDbPromise;
 
@@ -191,7 +111,9 @@ function formatBytes(bytes = 0) {
 
 function normalizeFamily(value) {
   const clean = String(value || "").trim().toLowerCase();
-  return Object.keys(BMWP_CR).find((family) => family.toLowerCase() === clean) || value.trim();
+  return BMWP_CR_ALIASES[clean] ||
+    Object.keys(BMWP_CR).find((family) => family.toLowerCase() === clean) ||
+    value.trim();
 }
 
 function familiesFromText(text) {
@@ -551,54 +473,137 @@ async function removeRecord(collection, index) {
   await updateStorageEstimate();
 }
 
-function scoreCandidate(taxon, answers) {
-  let score = 0;
-  let compared = 0;
-  Object.entries(answers).forEach(([key, value]) => {
-    if (!value || key === "codigo" || key === "punto" || key === "notas") return;
-    if (key === "orden") {
-      compared += 2;
-      score += taxon.order === value ? 2 : -2;
-      return;
-    }
-    if (taxon.traits[key] === undefined) return;
-    compared += 1;
-    const expected = Array.isArray(taxon.traits[key]) ? taxon.traits[key] : [taxon.traits[key]];
-    score += expected.includes(value) ? 1 : -1;
+function keyPathText() {
+  return keyHistory.map((step, index) =>
+    `${index + 1}. ${step.question} → ${step.answer}`
+  ).join(" | ");
+}
+
+function syncKeyFields() {
+  const form = document.getElementById("idForm");
+  if (!form) return;
+  form.elements.taxon.value = keyResult?.taxon || "";
+  form.elements.rango.value = keyResult?.rank || "";
+  form.elements.puntaje.value =
+    keyResult?.score === null || keyResult?.score === undefined ? "" : String(keyResult.score);
+  form.elements.rutaClave.value = keyPathText();
+}
+
+function selectKeyChoice(choice) {
+  const node = DICHOTOMOUS_KEY[keyNodeId];
+  keyHistory.push({
+    nodeId: keyNodeId,
+    question: node.question,
+    answer: choice.label
   });
-  return { score, compared };
-}
+  keyResult = null;
+  keyUnknown = "";
 
-function findCandidates() {
-  const answers = formToObject(document.getElementById("idForm"));
-  lastCandidates = ID_TAXA
-    .map((taxon) => ({ ...taxon, ...scoreCandidate(taxon, answers) }))
-    .filter((candidate) => candidate.compared === 0 || candidate.score > -1)
-    .sort((a, b) => b.score - a.score || b.compared - a.compared)
-    .slice(0, 6);
-  renderCandidates();
-}
-
-function renderCandidates() {
-  const container = document.getElementById("idCandidates");
-  if (!lastCandidates.length) {
-    container.innerHTML = "<div class=\"notice\">Complete varios rasgos y pulse “Buscar candidatos”.</div>";
-    return;
+  if (choice.result) {
+    const result = KEY_RESULTS[choice.result];
+    keyResult = {
+      ...result,
+      score: BMWP_CR[result.taxon] ?? null
+    };
+  } else if (choice.unknown) {
+    keyUnknown = choice.unknown;
+  } else {
+    keyNodeId = choice.next;
   }
-  const best = Math.max(...lastCandidates.map((candidate) => candidate.score));
-  container.innerHTML = lastCandidates.map((candidate) => {
-    const label = candidate.score === best && candidate.score > 1
-      ? "Coincidencia alta"
-      : candidate.score >= 0 ? "Coincidencia parcial" : "Coincidencia baja";
-    return `
-      <article class="candidate">
-        <h3>${escapeHtml(candidate.order)}</h3>
-        <span class="confidence">${escapeHtml(label)}</span>
-        <p><strong>Familias por revisar:</strong> ${escapeHtml(candidate.families)}</p>
-        <p>${escapeHtml(candidate.diagnostic)}</p>
+  renderDichotomousKey();
+}
+
+function resetDichotomousKey() {
+  keyNodeId = "start";
+  keyHistory = [];
+  keyResult = null;
+  keyUnknown = "";
+  renderDichotomousKey();
+}
+
+function backDichotomousKey() {
+  const previous = keyHistory.pop();
+  if (!previous) return;
+  keyNodeId = previous.nodeId;
+  keyResult = null;
+  keyUnknown = "";
+  renderDichotomousKey();
+}
+
+function stopDichotomousKey() {
+  const node = DICHOTOMOUS_KEY[keyNodeId];
+  keyUnknown =
+    `No se pudo observar el carácter: “${node.question}”. ` +
+    "Conserve el ejemplar y continúe la determinación con lupa o estereoscopio.";
+  keyResult = null;
+  renderDichotomousKey();
+}
+
+function renderDichotomousKey() {
+  const container = document.getElementById("dichotomousKey");
+  const progress = document.getElementById("keyProgress");
+  const saveButton = document.getElementById("saveIdentification");
+  if (!container || !progress || !saveButton) return;
+
+  progress.textContent = keyResult
+    ? `Determinación alcanzada en ${keyHistory.length} pasos`
+    : `Paso ${keyHistory.length + 1}`;
+  saveButton.disabled = !keyResult;
+
+  if (keyResult) {
+    const scoreText = keyResult.score === null
+      ? "No figura con puntaje propio en el Cuadro 5; no sumar al BMWP-CR."
+      : `Puntaje BMWP-CR: ${keyResult.score}`;
+    container.innerHTML = `
+      <article class="key-result" aria-live="polite">
+        <span class="key-result-label">Resultado de la clave</span>
+        <h3><i>${escapeHtml(keyResult.taxon)}</i></h3>
+        <p><strong>${escapeHtml(keyResult.rank)}</strong> · ${escapeHtml(keyResult.higher)}</p>
+        <p>${escapeHtml(keyResult.diagnostic)}</p>
+        <div class="key-score">${escapeHtml(scoreText)}</div>
+        <p class="key-warning">Confirme los caracteres diagnósticos antes de incorporar el taxón al resultado oficial.</p>
       </article>
     `;
-  }).join("");
+    syncKeyFields();
+    return;
+  }
+
+  if (keyUnknown) {
+    container.innerHTML = `
+      <div class="key-unknown" aria-live="polite">
+        <strong>Determinación no concluyente</strong>
+        <p>${escapeHtml(keyUnknown)}</p>
+        <p>No se asignó familia ni puntaje.</p>
+      </div>
+    `;
+    syncKeyFields();
+    return;
+  }
+
+  const node = DICHOTOMOUS_KEY[keyNodeId];
+  container.innerHTML = `
+    <fieldset class="key-couplet">
+      <legend>${escapeHtml(node.question)}</legend>
+      ${node.help ? `<p class="key-help">${escapeHtml(node.help)}</p>` : ""}
+      <div class="key-choices">
+        ${node.choices.map((choice, index) => `
+          <button type="button" class="key-choice" data-key-choice="${index}">
+            <span class="key-choice-letter">${index === 0 ? "A" : "B"}</span>
+            <span>
+              <strong>${escapeHtml(choice.label)}</strong>
+              <small>${escapeHtml(choice.detail || "")}</small>
+            </span>
+          </button>
+        `).join("")}
+      </div>
+    </fieldset>
+  `;
+  container.querySelectorAll("[data-key-choice]").forEach((button) => {
+    button.addEventListener("click", () =>
+      selectKeyChoice(node.choices[Number(button.dataset.keyChoice)])
+    );
+  });
+  syncKeyFields();
 }
 
 function render() {
@@ -638,7 +643,11 @@ function render() {
   state.identifications.forEach((record, index) => {
     idList.appendChild(makeItem(record, record.codigo || `Organismo ${index + 1}`, [
       `Punto/muestra: ${record.punto || "sin asociar"}`,
-      `Candidatos: ${(record.candidates || []).join(" · ") || "sin determinar"}`,
+      record.taxon
+        ? `${record.rango || "Taxón"}: ${record.taxon}` +
+          (record.puntaje ? ` · BMWP-CR ${record.puntaje}` : "")
+        : `Identificación anterior: ${(record.candidates || []).join(" · ") || "sin determinar"}`,
+      record.rutaClave ? `Ruta: ${record.rutaClave}` : "",
       record.notas || ""
     ], "identification", () => removeRecord(state.identifications, index)));
   });
@@ -698,7 +707,7 @@ function render() {
     ...state,
     media: "Las fotografías se incluyen en el respaldo ZIP y se omiten de esta vista."
   }, null, 2);
-  renderCandidates();
+  renderDichotomousKey();
   void hydratePhotoGalleries();
 }
 
@@ -733,7 +742,9 @@ function buildCsv() {
   });
   state.identifications.forEach((record) => rows.push([
     "identificacion", record.codigo, record.punto, "", "", "", "", "", "", "", "",
-    (record.candidates || []).join("; ")
+    record.taxon
+      ? `taxon=${record.taxon}; rango=${record.rango || ""}; puntaje=${record.puntaje || ""}; ruta=${record.rutaClave || ""}`
+      : (record.candidates || []).join("; ")
   ]));
   return rows.map((row) => row.map(csvEscape).join(",")).join("\n");
 }
@@ -905,19 +916,34 @@ document.getElementById("verticalForm").addEventListener("submit", (event) => {
   saveState();
 });
 
-document.getElementById("runIdentification").addEventListener("click", findCandidates);
+document.getElementById("keyBack").addEventListener("click", backDichotomousKey);
+document.getElementById("keyRestart").addEventListener("click", resetDichotomousKey);
+document.getElementById("keyUnknown").addEventListener("click", stopDichotomousKey);
 
 document.getElementById("idForm").addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!lastCandidates.length) findCandidates();
-  const candidates = lastCandidates.slice(0, 3).map((candidate) =>
-    `${candidate.order}: ${candidate.families}`
-  );
+  if (!keyResult) {
+    alert("Complete la clave dicotómica hasta obtener una determinación antes de guardar.");
+    return;
+  }
+  const determination = { ...keyResult };
   await addRecordFromForm(
-    event.currentTarget, state.identifications, "identification", "id", { candidates }
+    event.currentTarget,
+    state.identifications,
+    "identification",
+    "id",
+    {
+      candidates: [determination.taxon],
+      taxon: determination.taxon,
+      rango: determination.rank,
+      puntaje: determination.score ?? "",
+      taxonomiaSuperior: determination.higher,
+      diagnostico: determination.diagnostic,
+      rutaClave: keyPathText(),
+      identifiedAt: new Date().toISOString()
+    }
   );
-  lastCandidates = [];
-  renderCandidates();
+  resetDichotomousKey();
 });
 
 document.getElementById("exportZip").addEventListener("click", exportZip);

@@ -1,8 +1,9 @@
-const CACHE_NAME = "btmm-bmwt-cr-v4-auto-update";
+const CACHE_NAME = "btmm-bmwt-cr-v5-dichotomous-key";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
+  "./key-data.js",
   "./app.js",
   "./manifest.webmanifest",
   "./icon.svg",

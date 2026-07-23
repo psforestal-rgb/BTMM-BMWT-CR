@@ -21,8 +21,12 @@ grandes se adapta a una distribución de dos columnas.
   conceda al dispositivo.
 - Muestreo de macroinvertebrados con método, esfuerzo, hábitats, sustrato,
   ribera, preservante, familias y cálculo preliminar BMWP-CR por muestra.
-- Identificación asistida offline mediante rasgos observables y candidatos de
-  orden/familia. No se presenta como identificación taxonómica confirmada.
+- Clave dicotómica offline y progresiva: presenta solamente dos alternativas
+  por paso y despliega automáticamente el siguiente par de caracteres hasta
+  alcanzar familia o el grupo taxonómico admitido por BMWP-CR.
+- Resultado con rango, taxonomía superior, puntaje reglamentario, ruta completa
+  seguida en la clave y salida no concluyente sin puntaje cuando un carácter no
+  puede observarse.
 - Múltiples secciones de perfil mojado, cada una con sus propias verticales,
   fotografías y cálculo de caudal.
 - Respaldo ZIP con JSON, CSV, fotografías y manifiesto de asociación.
@@ -49,15 +53,24 @@ desde 2018.
 
 ## Identificación
 
-La clave offline usa caracteres externos que pueden verse en campo o con lupa.
-La identificación a familia debe confirmarse con una clave taxonómica adecuada,
-material preservado y, cuando corresponda, un especialista. Para añadir
-clasificación automática de fotografías se requiere un conjunto de entrenamiento
-costarricense etiquetado, permisos de uso de imágenes, validación independiente y
-un modelo compatible con ejecución local en el navegador.
+La clave offline usa pares de caracteres externos observables en campo o con
+lupa. El artículo 15 del Decreto Ejecutivo 33903-MINAE-S exige identificar los
+organismos bentónicos hasta el máximo nivel posible y acepta como mínimo la
+familia, excepto para Annelida. Los puntajes corresponden al Apéndice III,
+Cuadro 5, del mismo decreto.
+
+La clave cubre los grupos de uso más frecuente incluidos en las guías
+costarricenses consultadas. Cuando un carácter no puede observarse o la
+combinación queda fuera de su alcance, la aplicación termina como “no
+concluyente” y no asigna puntaje. La identificación debe confirmarse con material
+preservado, equipo óptico, literatura taxonómica especializada y, cuando
+corresponda, una persona especialista.
 
 Fuentes de consulta para la arquitectura de la clave:
 
+- [Decreto Ejecutivo 33903-MINAE-S, Reglamento para la Evaluación y Clasificación de la Calidad de Cuerpos de Agua Superficiales](https://www.da.go.cr/wp-content/uploads/2016/06/Decreto-Evaluacion-y-Clasificacion-Calidad-Agua-Superficial-DE-33903-MINAE-S.pdf).
+- *Clave ilustrada para la identificación de macroinvertebrados de agua dulce*,
+  PNUD Costa Rica, Proyecto Transición hacia una Economía Verde Urbana.
 - [USGS, North American Aquatic Macroinvertebrate Digital Reference Collection](https://sciencebase.usgs.gov/naamdrc).
 - [Macroinvertebrates.org](https://www.macroinvertebrates.org/about), proyecto
   educativo financiado por NSF y desarrollado con participación de Carnegie

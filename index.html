@@ -293,11 +293,11 @@
 
       <section class="panel" id="identificar">
         <div class="section-head">
-          <h2>Identificación asistida sin conexión</h2>
-          <p>Clave visual orientativa basada en rasgos. No sustituye la confirmación con lupa, clave taxonómica ni especialista.</p>
+          <h2>Clave dicotómica BMWP-CR sin conexión</h2>
+          <p>Seleccione una de las dos alternativas y la clave desplegará automáticamente el siguiente nivel.</p>
         </div>
         <div class="notice">
-          <strong>Alcance actual:</strong> filtra órdenes y familias probables a partir de caracteres observables. Un clasificador fotográfico automático necesita un banco costarricense etiquetado y validación independiente.
+          <strong>Nivel requerido:</strong> el artículo 15 del Decreto Ejecutivo 33903-MINAE-S exige identificar hasta el máximo nivel posible y acepta como mínimo la familia, excepto para Annelida. Una determinación no concluyente no recibe puntaje.
         </div>
         <form class="grid-form" id="idForm" data-photo-queue="identification">
           <label>Código del organismo
@@ -306,76 +306,21 @@
           <label>Punto o muestra asociados
             <input name="punto" placeholder="Ej. BMWT-001">
           </label>
-          <label>Número de patas articuladas visibles
-            <select name="patas">
-              <option value="">No determinado</option>
-              <option value="0">Ninguna</option>
-              <option value="6">Seis</option>
-              <option value="other">Otra cantidad</option>
-            </select>
-          </label>
-          <label>Colas o cercos terminales
-            <select name="colas">
-              <option value="">No determinado</option>
-              <option value="0">Ninguna</option>
-              <option value="1">Una</option>
-              <option value="2">Dos</option>
-              <option value="3">Tres</option>
-            </select>
-          </label>
-          <label>¿Tiene concha?
-            <select name="concha">
-              <option value="">No determinado</option>
-              <option value="yes">Sí</option>
-              <option value="no">No</option>
-            </select>
-          </label>
-          <label>¿Vive dentro de un estuche portátil?
-            <select name="estuche">
-              <option value="">No determinado</option>
-              <option value="yes">Sí</option>
-              <option value="no">No</option>
-            </select>
-          </label>
-          <label>Branquias en láminas a los lados del abdomen
-            <select name="branquias">
-              <option value="">No determinado</option>
-              <option value="yes">Sí</option>
-              <option value="no">No</option>
-            </select>
-          </label>
-          <label>Filamentos laterales largos en el abdomen
-            <select name="filamentos">
-              <option value="">No determinado</option>
-              <option value="yes">Sí</option>
-              <option value="no">No</option>
-            </select>
-          </label>
-          <label>Rasgo llamativo
-            <select name="rasgo">
-              <option value="">No determinado</option>
-              <option value="mask">Labio inferior extensible tipo máscara</option>
-              <option value="hooks">Dos falsas patas terminales con ganchos</option>
-              <option value="sucker">Disco o ventosas ventrales</option>
-              <option value="beak">Pico perforador bajo la cabeza</option>
-              <option value="worm">Cuerpo vermiforme sin patas articuladas</option>
-            </select>
-          </label>
-          <label>Orden sospechado
-            <select name="orden">
-              <option value="">Sin hipótesis previa</option>
-              <option>Ephemeroptera</option>
-              <option>Plecoptera</option>
-              <option>Trichoptera</option>
-              <option>Odonata</option>
-              <option>Coleoptera</option>
-              <option>Diptera</option>
-              <option>Hemiptera</option>
-              <option>Megaloptera</option>
-              <option>Annelida</option>
-              <option>Mollusca</option>
-            </select>
-          </label>
+          <input type="hidden" name="taxon">
+          <input type="hidden" name="rango">
+          <input type="hidden" name="puntaje">
+          <input type="hidden" name="rutaClave">
+          <div class="wide key-shell">
+            <div class="key-toolbar">
+              <strong id="keyProgress">Paso 1</strong>
+              <div>
+                <button type="button" class="compact" id="keyBack">Atrás</button>
+                <button type="button" class="compact" id="keyRestart">Reiniciar</button>
+              </div>
+            </div>
+            <div id="dichotomousKey" aria-live="polite"></div>
+            <button type="button" class="key-unknown-button" id="keyUnknown">No puedo observar este carácter</button>
+          </div>
           <label class="wide photo-field">Fotografías del organismo
             <input class="photo-input" type="file" accept="image/*" multiple>
             <span class="help">Conviene fotografiar vista dorsal, lateral, cabeza, extremo abdominal y escala.</span>
@@ -385,11 +330,9 @@
             <textarea name="notas" rows="3" placeholder="Color en vivo, tamaño, microhábitat y rasgos vistos con lupa"></textarea>
           </label>
           <div class="wide actions">
-            <button type="button" class="primary" id="runIdentification">Buscar candidatos</button>
-            <button type="submit" id="saveIdentification">Guardar identificación</button>
+            <button type="submit" class="primary" id="saveIdentification" disabled>Guardar determinación</button>
           </div>
         </form>
-        <div id="idCandidates" class="candidate-grid" aria-live="polite"></div>
         <div class="list" id="idList"></div>
       </section>
 
@@ -522,6 +465,7 @@
 
     <script src="vendor/proj4.js"></script>
     <script src="vendor/jszip.min.js"></script>
+    <script src="key-data.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

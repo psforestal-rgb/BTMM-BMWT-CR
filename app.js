@@ -811,12 +811,39 @@ function updateNetworkStatus() {
     : "Sin conexión · modo offline";
 }
 
+function activatePanel(panelId, options = {}) {
+  const panel = document.getElementById(panelId);
+  const tab = document.querySelector(`.tab[data-panel="${panelId}"]`);
+  if (!panel || !tab) return;
+
+  document.querySelectorAll(".tab").forEach((item) => {
+    const active = item === tab;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-current", active ? "page" : "false");
+  });
+  document.querySelectorAll(".panel").forEach((item) => {
+    item.classList.toggle("active", item === panel);
+  });
+
+  history.replaceState(null, "", `#${panelId}`);
+  sessionStorage.setItem("btmm-active-panel", panelId);
+  if (options.scroll !== false) {
+    window.scrollTo({ top: 0, behavior: options.smooth ? "smooth" : "auto" });
+  }
+  if (options.focusForm) {
+    requestAnimationFrame(() => {
+      panel.querySelector("input:not([type='hidden']), select, textarea")?.focus({ preventScroll: true });
+    });
+  }
+}
+
 document.querySelectorAll(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((item) => item.classList.remove("active"));
-    document.querySelectorAll(".panel").forEach((panel) => panel.classList.remove("active"));
-    tab.classList.add("active");
-    document.getElementById(tab.dataset.panel).classList.add("active");
+  tab.addEventListener("click", () => activatePanel(tab.dataset.panel));
+});
+
+document.querySelectorAll("[data-go-panel]").forEach((button) => {
+  button.addEventListener("click", () => {
+    activatePanel(button.dataset.goPanel, { smooth: true, focusForm: true });
   });
 });
 
@@ -939,3 +966,6 @@ if ("serviceWorker" in navigator) {
 updateNetworkStatus();
 render();
 void updateStorageEstimate();
+
+const requestedPanel = location.hash.slice(1) || sessionStorage.getItem("btmm-active-panel");
+if (requestedPanel) activatePanel(requestedPanel, { scroll: false });

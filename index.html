@@ -9,6 +9,7 @@
     <meta name="description" content="PWA offline para muestreo BTMM-BMWP-CR, perfil mojado, caudal e identificación asistida.">
     <title>BTMM-BMWT-CR</title>
     <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="vendor/leaflet.css">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -24,7 +25,7 @@
       </div>
     </header>
 
-    <nav class="tabs" aria-label="Secciones principales">
+    <nav class="tabs legacy-tabs" aria-label="Secciones principales" hidden>
       <button class="tab active" data-panel="gira" aria-label="Datos de gira">
         <span class="tab-icon" aria-hidden="true">⌂</span><span>Gira</span>
       </button>
@@ -50,14 +51,6 @@
         <div class="section-head">
           <h2>Datos preliminares de gira</h2>
           <p>Identificación del expediente, equipo de campo, cuerpo de agua y condiciones generales.</p>
-        </div>
-        <div class="quick-actions" aria-label="Acciones rápidas de campo">
-          <p>Nuevo registro</p>
-          <div>
-            <button type="button" data-go-panel="observaciones">+ Observación</button>
-            <button type="button" data-go-panel="macro">+ Muestra</button>
-            <button type="button" data-go-panel="caudal">+ Caudal</button>
-          </div>
         </div>
         <form class="grid-form autosave" id="tripForm">
           <label>Número de expediente
@@ -139,6 +132,51 @@
             <textarea name="observaciones" rows="3" placeholder="Condiciones iniciales, acceso u otros aspectos relevantes"></textarea>
           </label>
         </form>
+        <div class="trip-workflow-actions">
+          <button type="button" id="lockTripButton" class="secondary">Bloquear edición</button>
+          <button type="button" id="continueToMap" class="primary" disabled>Continuar al mapa</button>
+        </div>
+        <p id="tripLockStatus" class="workflow-status" aria-live="polite">Revise los datos y bloquee la edición antes de continuar.</p>
+      </section>
+
+      <section class="panel map-panel" id="mapa" aria-label="Mapa de trabajo de campo">
+        <div class="map-shell">
+          <div class="map-toolbar">
+            <button type="button" id="mapBackToTrip">Datos preliminares</button>
+            <div class="map-location-readout">
+              <strong>Mapa de la gira</strong>
+              <span id="mapGpsStatus">Esperando ubicación…</span>
+            </div>
+            <button type="button" id="mapLocate" class="map-locate-button" aria-label="Centrar mapa en mi ubicación">◎</button>
+            <button type="button" id="mapBackup" aria-label="Abrir respaldo">Respaldar</button>
+          </div>
+          <div id="fieldMap" class="field-map" role="application" aria-label="Imagen aérea con ubicación actual y puntos guardados"></div>
+          <div class="map-attribution-note">Esri World Imagery · fecha y resolución variables según la zona</div>
+          <div class="map-legend" aria-label="Leyenda de puntos">
+            <span><i class="legend-dot current"></i>Ubicación actual</span>
+            <span><i class="legend-dot macro"></i>Macroinvertebrados</span>
+            <span><i class="legend-dot flow"></i>Caudal</span>
+            <span><i class="legend-dot reference"></i>Referencia</span>
+            <strong id="mapPointCount">0 puntos</strong>
+          </div>
+          <button type="button" id="mapAddRecord" class="map-fab" aria-label="Agregar registro">+</button>
+          <div class="record-menu-backdrop" id="recordMenu" hidden>
+            <div class="record-menu" role="dialog" aria-modal="true" aria-labelledby="recordMenuTitle">
+              <div class="record-menu-head">
+                <div>
+                  <p>Nuevo registro</p>
+                  <h2 id="recordMenuTitle">¿Qué desea agregar?</h2>
+                </div>
+                <button type="button" id="closeRecordMenu" aria-label="Cerrar">×</button>
+              </div>
+              <div class="record-menu-options">
+                <button type="button" data-open-record="caudal"><strong>Caudal</strong><span>Perfil mojado, verticales y velocidad</span></button>
+                <button type="button" data-open-record="macro"><strong>Macroinvertebrados</strong><span>Muestra, fotografías y clave dicotómica</span></button>
+                <button type="button" data-open-record="cierre"><strong>Cierre de gira</strong><span>Hora final, meteorología y observaciones</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section class="panel" id="observaciones">
@@ -532,6 +570,7 @@
       <div class="photo-gallery"></div>
     </template>
 
+    <script src="vendor/leaflet.js"></script>
     <script src="vendor/proj4.js"></script>
     <script src="vendor/jszip.min.js"></script>
     <script src="key-data.js"></script>

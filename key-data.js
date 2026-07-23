@@ -209,10 +209,6 @@ const KEY_RESULTS = Object.freeze({
     taxon: "Asellidae", rank: "Familia", higher: "Crustacea · Isopoda",
     diagnostic: "Crustáceo aplanado dorsoventralmente, con patas semejantes entre sí y sin caparazón de decápodo."
   },
-  amphipoda: {
-    taxon: "Amphipoda", rank: "Requiere confirmar familia", higher: "Crustacea",
-    diagnostic: "Crustáceo comprimido lateralmente. Para BMWP-CR debe separarse Gammaridae o Talitridae antes de puntuar."
-  },
   crustacea: {
     taxon: "Crustacea", rank: "Grupo BMWP-CR", higher: "Arthropoda",
     diagnostic: "Camarón o cangrejo decápodo. El Cuadro 5 del BMWP-CR asigna puntaje al grupo Crustacea."
@@ -575,7 +571,7 @@ const DICHOTOMOUS_KEY = Object.freeze({
   crustacean_lateral: {
     question: "¿El cuerpo está comprimido de lado y suele curvarse en forma de C?",
     choices: [
-      { label: "Sí, comprimido lateralmente", detail: "Anfípodo.", result: "amphipoda" },
+      { label: "Sí, comprimido lateralmente", detail: "Anfípodo.", unknown: "Amphipoda: para BMWP-CR debe confirmarse la familia Gammaridae o Talitridae con una clave especializada." },
       { label: "No, parece camarón o cangrejo", detail: "Decápodo.", result: "crustacea" }
     ]
   },

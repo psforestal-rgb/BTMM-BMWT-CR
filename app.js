@@ -12,6 +12,79 @@ proj4.defs(
   "+proj=tmerc +lat_0=0 +lon_0=-84 +k=0.9999 +x_0=500000 +y_0=0 +ellps=GRS80 +towgs84=0.16959,-0.35312,-0.51846,-0.03385,0.16325,-0.03446,0.03693 +units=m +no_defs +type=crs"
 );
 
+
+const DEFAULT_PARTICIPANT = Object.freeze({
+  nombre: "Pablo Sánchez",
+  representada: "BTMM-PNLQ"
+});
+
+function localDateValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return year + "-" + month + "-" + day;
+}
+
+function localTimeValue(date = new Date()) {
+  return String(date.getHours()).padStart(2, "0") + ":" +
+    String(date.getMinutes()).padStart(2, "0");
+}
+
+function defaultParticipant() {
+  return {
+    id: uid("participant"),
+    nombre: DEFAULT_PARTICIPANT.nombre,
+    representada: DEFAULT_PARTICIPANT.representada,
+    editableName: false,
+    editableRepresentada: false
+  };
+}
+
+function defaultTrip() {
+  return {
+    fecha: localDateValue(),
+    horaInicio: localTimeValue(),
+    meteoInicial: "",
+    participantes: [defaultParticipant()]
+  };
+}
+
+function normalizeParticipants(value, useDefault = false) {
+  if (Array.isArray(value)) {
+    return value.map((participant) => ({
+      id: participant.id || uid("participant"),
+      nombre: String(participant.nombre || participant.name || ""),
+      representada: String(participant.representada || participant.institucion || ""),
+      editableName: Boolean(participant.editableName || participant.custom || !participant.nombre),
+      editableRepresentada: Boolean(participant.editableRepresentada || participant.custom)
+    }));
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.split(/[\n;]/).map((line) => {
+      const parts = line.split("/");
+      return {
+        id: uid("participant"),
+        nombre: String(parts.shift() || "").trim(),
+        representada: parts.join("/").trim(),
+        editableName: true,
+        editableRepresentada: true
+      };
+    }).filter((participant) => participant.nombre || participant.representada);
+  }
+  return useDefault ? [defaultParticipant()] : [];
+}
+
+function persistDraft() {
+  state.schemaVersion = 3;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  document.getElementById("saveStatus").textContent =
+    "Guardado " + new Date().toLocaleTimeString("es-CR");
+  document.getElementById("jsonPreview").textContent = JSON.stringify({
+    ...state,
+    media: "Las fotografías se incluyen en el respaldo ZIP y se omiten de esta vista."
+  }, null, 2);
+}
+
 let state = loadState();
 let keyNodeId = "start";
 let keyHistory = [];
@@ -27,8 +100,9 @@ function uid(prefix = "rec") {
 
 function emptyState() {
   return {
-    schemaVersion: 2,
-    trip: {},
+    schemaVersion: 3,
+    trip: defaultTrip(),
+    closure: {},
     observations: [],
     macroSamples: [],
     identifications: [],
@@ -48,6 +122,19 @@ function loadState() {
     raw = {};
   }
   const next = { ...emptyState(), ...raw };
+  const rawTrip = raw.trip && typeof raw.trip === "object" ? raw.trip : {};
+  const hasParticipants = Object.prototype.hasOwnProperty.call(rawTrip, "participantes");
+  next.trip = {
+    ...defaultTrip(),
+    ...rawTrip,
+    meteoInicial: rawTrip.meteoInicial || rawTrip.meteo || "",
+    participantes: normalizeParticipants(rawTrip.participantes, !hasParticipants)
+  };
+  next.closure = raw.closure && typeof raw.closure === "object" ? { ...raw.closure } : {};
+  if (!next.closure.horaFinal && rawTrip.horaCierre) {
+    next.closure.horaFinal = rawTrip.horaCierre;
+  }
+  next.schemaVersion = 3;
   next.observations = Array.isArray(raw.observations) ? raw.observations.map((record) => ({
     ...record, id: record.id || uid("obs"), photoIds: record.photoIds || []
   })) : [];
@@ -606,8 +693,103 @@ function renderDichotomousKey() {
   syncKeyFields();
 }
 
+function participantInput(labelText, value, className, placeholder, readOnly) {
+  const label = document.createElement("label");
+  label.className = "participant-cell";
+  const caption = document.createElement("span");
+  caption.className = "participant-mobile-label";
+  caption.textContent = labelText;
+  const input = document.createElement("input");
+  input.className = className;
+  input.value = value || "";
+  input.placeholder = placeholder;
+  input.readOnly = readOnly;
+  label.append(caption, input);
+  return { label, input };
+}
+
+function renderParticipantRows(focusId = "") {
+  const container = document.getElementById("participantRows");
+  if (!container) return;
+  container.innerHTML = "";
+  (state.trip.participantes || []).forEach((participant) => {
+    const row = document.createElement("div");
+    row.className = "participant-row";
+    row.dataset.participantId = participant.id;
+    row.setAttribute("role", "row");
+
+    const nameField = participantInput(
+      "Nombre completo",
+      participant.nombre,
+      "participant-name",
+      "Escriba el nombre completo",
+      !participant.editableName
+    );
+    const representedField = participantInput(
+      "Representada",
+      participant.representada,
+      "participant-represented",
+      "Escriba la institución o dependencia representada",
+      !participant.editableRepresentada
+    );
+    nameField.label.setAttribute("role", "cell");
+    representedField.label.setAttribute("role", "cell");
+
+    nameField.input.addEventListener("input", () => {
+      participant.nombre = nameField.input.value;
+      persistDraft();
+    });
+    representedField.input.addEventListener("input", () => {
+      participant.representada = representedField.input.value;
+      persistDraft();
+    });
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "participant-remove";
+    remove.setAttribute("aria-label", "Eliminar participante " + (participant.nombre || "sin nombre"));
+    remove.textContent = "×";
+    remove.addEventListener("click", () => {
+      state.trip.participantes = state.trip.participantes.filter((item) => item.id !== participant.id);
+      renderParticipantRows();
+      persistDraft();
+    });
+
+    row.append(nameField.label, representedField.label, remove);
+    container.appendChild(row);
+  });
+
+  if (!(state.trip.participantes || []).length) {
+    const empty = document.createElement("p");
+    empty.className = "participant-empty";
+    empty.textContent = "No hay participantes agregados.";
+    container.appendChild(empty);
+  }
+
+  if (focusId) {
+    container.querySelector('[data-participant-id="' + focusId + '"] .participant-name')?.focus();
+  }
+}
+
+function addParticipantFromOption(option) {
+  if (!option || (!option.value && !option.dataset.name && !option.dataset.representada)) return;
+  const custom = option.value === "__other__";
+  const participant = {
+    id: uid("participant"),
+    nombre: custom ? "" : (option.dataset.name || ""),
+    representada: custom ? "" : (option.dataset.representada || ""),
+    editableName: custom || !option.dataset.name,
+    editableRepresentada: custom
+  };
+  state.trip.participantes = [...(state.trip.participantes || []), participant];
+  renderParticipantRows(participant.editableName ? participant.id : "");
+  persistDraft();
+}
+
 function render() {
   fillForm(document.getElementById("tripForm"), state.trip);
+  fillForm(document.getElementById("closureForm"), state.closure);
+  renderParticipantRows();
 
   const obsList = document.getElementById("obsList");
   obsList.innerHTML = "";
@@ -720,6 +902,22 @@ function buildCsv() {
     "tipo", "codigo", "punto", "crs", "este", "norte", "lat_wgs84", "lon_wgs84",
     "precision_m", "altitud_m", "fecha_gps", "detalle"
   ]];
+  rows.push([
+    "gira_inicio", state.trip.expediente || "", state.trip.cuerpoAgua || "", "", "", "", "", "", "", "", "",
+    "fecha=" + (state.trip.fecha || "") + "; hora_inicio=" + (state.trip.horaInicio || "") +
+      "; area_silvestre=" + (state.trip.areaSilvestre || "") +
+      "; meteorologia_inicial=" + (state.trip.meteoInicial || "") +
+      "; observaciones=" + (state.trip.observaciones || "")
+  ]);
+  (state.trip.participantes || []).forEach((participant) => rows.push([
+    "participante", participant.nombre || "", participant.representada || "", "", "", "", "", "", "", "", "", ""
+  ]));
+  rows.push([
+    "gira_cierre", "", "", "", "", "", "", "", "", "", "",
+    "hora_final=" + (state.closure.horaFinal || "") +
+      "; meteorologia_final=" + (state.closure.meteoFinal || "") +
+      "; observaciones_finales=" + (state.closure.observacionesFinales || "")
+  ]);
   state.observations.forEach((record) => rows.push([
     "observacion", record.nombre, record.tipo, record.crs, record.este, record.norte,
     record.lat, record.lon, record.precision, record.altitud, record.gpsFecha, record.notas
@@ -876,11 +1074,36 @@ document.querySelectorAll(".photo-input").forEach((input) => {
 });
 
 document.getElementById("tripForm").addEventListener("input", (event) => {
-  state.trip = formToObject(event.currentTarget);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  document.getElementById("saveStatus").textContent =
-    `Guardado ${new Date().toLocaleTimeString("es-CR")}`;
-  document.getElementById("jsonPreview").textContent = JSON.stringify(state, null, 2);
+  state.trip = {
+    ...state.trip,
+    ...formToObject(event.currentTarget),
+    participantes: state.trip.participantes || []
+  };
+  persistDraft();
+});
+
+document.getElementById("closureForm").addEventListener("input", (event) => {
+  state.closure = { ...state.closure, ...formToObject(event.currentTarget) };
+  persistDraft();
+});
+
+document.getElementById("showParticipantPicker").addEventListener("click", () => {
+  const picker = document.getElementById("participantPicker");
+  picker.hidden = !picker.hidden;
+  if (!picker.hidden) document.getElementById("participantSelect").focus();
+});
+
+document.getElementById("participantSelect").addEventListener("change", (event) => {
+  addParticipantFromOption(event.currentTarget.selectedOptions[0]);
+  event.currentTarget.selectedIndex = 0;
+  document.getElementById("participantPicker").hidden = true;
+});
+
+document.getElementById("setEndTime").addEventListener("click", () => {
+  const field = document.getElementById("closureForm").elements.horaFinal;
+  field.value = localTimeValue();
+  state.closure = { ...state.closure, horaFinal: field.value };
+  persistDraft();
 });
 
 document.getElementById("obsForm").addEventListener("submit", async (event) => {

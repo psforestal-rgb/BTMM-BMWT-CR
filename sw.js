@@ -1,4 +1,4 @@
-const CACHE_NAME = "btmm-bmwt-cr-v2";
+const CACHE_NAME = "btmm-bmwt-cr-v3-mobile";
 const ASSETS = [
   "./",
   "./index.html",

@@ -69,33 +69,74 @@
           <label>Hora de inicio
             <input name="horaInicio" type="time">
           </label>
-          <label>Hora de cierre
-            <input name="horaCierre" type="time">
-          </label>
-          <label>Participantes
-            <textarea name="participantes" rows="3" placeholder="Nombres, institución y rol"></textarea>
-          </label>
-          <label>Área protegida o sector
-            <input name="sector" placeholder="Ej. Parque Nacional Los Quetzales, sector Dos Amigos">
+
+          <fieldset class="wide participants-fieldset">
+            <legend>Participantes</legend>
+            <div class="participant-table" role="table" aria-label="Participantes de la inspección">
+              <div class="participant-header" role="row">
+                <span role="columnheader">Nombre completo</span>
+                <span role="columnheader">Representada</span>
+                <span aria-hidden="true"></span>
+              </div>
+              <div id="participantRows" role="rowgroup"></div>
+            </div>
+            <button type="button" id="showParticipantPicker" class="secondary participant-add-button">+ Agregar participante</button>
+            <div class="participant-picker" id="participantPicker" hidden>
+              <label>Seleccione un funcionario
+                <select id="participantSelect">
+                  <option value="" selected disabled>Seleccione</option>
+                  <option data-name="Errol Salazar" data-representada="BTMM-PNTMM">Errol Salazar / BTMM-PNTMM</option>
+                  <option data-name="Mayra Espinoza" data-representada="BTMM-PNTMM">Mayra Espinoza / BTMM-PNTMM</option>
+                  <option data-name="Yeison Cortés" data-representada="BTMM-PNTMM">Yeison Cortés / BTMM-PNTMM</option>
+                  <option data-name="Kenneth Mena" data-representada="BTMM-PNTMM">Kenneth Mena / BTMM-PNTMM</option>
+                  <option data-name="Fabricio Carbonell" data-representada="BTMM-PNTMM">Fabricio Carbonell / BTMM-PNTMM</option>
+                  <option data-name="" data-representada="BTMM-PNLQ">/ BTMM-PNLQ</option>
+                  <option data-name="Enzo Martini" data-representada="BTMM-PNTMM">Enzo Martini / BTMM-PNTMM</option>
+                  <option data-name="Juan Pablo Granados" data-representada="BTMM-PNLQ">Juan Pablo Granados / BTMM-PNLQ</option>
+                  <option data-name="Laura Valverde" data-representada="BTMM-PNLQ">Laura Valverde / BTMM-PNLQ</option>
+                  <option data-name="Jetzelly Villalobos" data-representada="BTMM-PNLQ">Jetzelly Villalobos / BTMM-PNLQ</option>
+                  <option data-name="Diana Tencio" data-representada="BTMM-PNLQ">Diana Tencio / BTMM-PNLQ</option>
+                  <option data-name="Karen Valle" data-representada="BTMM-PNLQ">Karen Valle / BTMM-PNLQ</option>
+                  <option data-name="Pablo Sánchez" data-representada="BTMM-PNLQ">Pablo Sánchez / BTMM-PNLQ</option>
+                  <option data-name="Yolanda Elizondo" data-representada="BTMM-PLE">Yolanda Elizondo / BTMM-PLE</option>
+                  <option data-name="Mariano Solis" data-representada="BTMM-PLE">Mariano Solis / BTMM-PLE</option>
+                  <option data-name="Guillermo Perez" data-representada="BTMM-PLE">Guillermo Perez / BTMM-PLE</option>
+                  <option data-name="Carlos Cordero" data-representada="BTMM-PLE">Carlos Cordero / BTMM-PLE</option>
+                  <option value="__other__">Otro</option>
+                </select>
+              </label>
+            </div>
+          </fieldset>
+
+          <label class="wide">Área silvestre protegida
+            <select name="areaSilvestre">
+              <option value="">Seleccione</option>
+              <option>Parque Nacional Tapantí-Macizo de la Muerte</option>
+              <option>Parque Nacional Los Quetzales</option>
+              <option>Reserva Biológica Cerro Vueltas</option>
+              <option>Reserva Forestal Río Macho</option>
+              <option>Reserva Forestal Los Santos</option>
+              <option>Zona Protectora Río Navarro – Río Sombrero</option>
+              <option>Fuera de área protegida</option>
+            </select>
           </label>
           <label>Nombre del cuerpo de agua
             <input name="cuerpoAgua" placeholder="Río, quebrada, naciente o tramo">
           </label>
-          <label>Objetivo de la gira
-            <textarea name="objetivo" rows="3" placeholder="Inspección, monitoreo, línea base o seguimiento"></textarea>
-          </label>
-          <label>Condición meteorológica
-            <select name="meteo">
+          <label>Condición meteorológica inicial
+            <select name="meteoInicial">
               <option value="">Seleccione</option>
               <option>Soleado</option>
+              <option>Parcialmente nublado</option>
               <option>Nublado</option>
+              <option>Neblina</option>
               <option>Llovizna</option>
               <option>Lluvia reciente</option>
-              <option>Lluvia durante el muestreo</option>
+              <option>Lluvia durante el inicio</option>
             </select>
           </label>
-          <label>Observaciones generales
-            <textarea name="observaciones" rows="3"></textarea>
+          <label class="wide">Observaciones
+            <textarea name="observaciones" rows="3" placeholder="Condiciones iniciales, acceso u otros aspectos relevantes"></textarea>
           </label>
         </form>
       </section>
@@ -441,6 +482,34 @@
           <h2>Respaldo y exportación</h2>
           <p>El ZIP completo contiene datos JSON, CSV y todas las fotografías con un manifiesto de asociación.</p>
         </div>
+        <div class="closure-card">
+          <div class="section-head">
+            <h3>Cierre de la gira</h3>
+            <p>Complete estos campos al finalizar la inspección.</p>
+          </div>
+          <form class="grid-form autosave closure-form" id="closureForm">
+            <label>Hora final
+              <input name="horaFinal" type="time">
+            </label>
+            <label>Condiciones meteorológicas imperantes
+              <select name="meteoFinal">
+                <option value="">Seleccione</option>
+                <option>Soleado</option>
+                <option>Parcialmente nublado</option>
+                <option>Nublado</option>
+                <option>Neblina</option>
+                <option>Llovizna</option>
+                <option>Lluvia reciente</option>
+                <option>Lluvia durante el cierre</option>
+              </select>
+            </label>
+            <label class="wide">Observaciones finales
+              <textarea name="observacionesFinales" rows="3" placeholder="Cambios observados, incidencias y condición del sitio al terminar"></textarea>
+            </label>
+            <button type="button" class="primary wide" id="setEndTime">Registrar hora final actual</button>
+          </form>
+        </div>
+
         <div class="storage-card">
           <div>
             <strong>Almacenamiento local</strong>

@@ -1,40 +1,166 @@
-const STORAGE_KEY = "btmm-bmwt-cr-v1";
+const STORAGE_KEY = "btmm-bmwt-cr-v2";
+const LEGACY_STORAGE_KEY = "btmm-bmwt-cr-v1";
+const MEDIA_DB = "btmm-bmwt-media-v1";
+const MEDIA_STORE = "photos";
+
+proj4.defs(
+  "EPSG:5367",
+  "+proj=tmerc +lat_0=0 +lon_0=-84 +k=0.9999 +x_0=500000 +y_0=0 +ellps=WGS84 +units=m +no_defs +type=crs"
+);
+proj4.defs(
+  "EPSG:8908",
+  "+proj=tmerc +lat_0=0 +lon_0=-84 +k=0.9999 +x_0=500000 +y_0=0 +ellps=GRS80 +towgs84=0.16959,-0.35312,-0.51846,-0.03385,0.16325,-0.03446,0.03693 +units=m +no_defs +type=crs"
+);
 
 const BMWP_CR = {
   Perlidae: 10, Oligoneuriidae: 10, Odontoceridae: 10, Calamoceratidae: 10,
   Leptophlebiidae: 9, Leptoceridae: 9, Helicopsychidae: 9, Philopotamidae: 9,
-  Euthyplociidae: 9, Glossosomatidae: 9,
-  Psephenidae: 8, Hydrobiosidae: 8, Corydalidae: 8, Gomphidae: 8,
-  Polycentropodidae: 8, Xiphocentronidae: 8,
+  Euthyplociidae: 9, Glossosomatidae: 9, Psephenidae: 8, Hydrobiosidae: 8,
+  Corydalidae: 8, Gomphidae: 8, Polycentropodidae: 8, Xiphocentronidae: 8,
   Baetidae: 7, Leptohyphidae: 7, Hydropsychidae: 7, Elmidae: 7,
-  Aeshnidae: 7, Libellulidae: 7, Naucoridae: 7,
-  Veliidae: 6, Gerridae: 6, Gyrinidae: 6, Dryopidae: 6, Lutrochidae: 6,
-  Hydroptilidae: 6, Simuliidae: 5, Tipulidae: 5, Ceratopogonidae: 5,
-  Tabanidae: 5, Belostomatidae: 5, Corixidae: 5,
+  Aeshnidae: 7, Libellulidae: 7, Naucoridae: 7, Veliidae: 6, Gerridae: 6,
+  Gyrinidae: 6, Dryopidae: 6, Lutrochidae: 6, Hydroptilidae: 6,
+  Simuliidae: 5, Tipulidae: 5, Ceratopogonidae: 5, Tabanidae: 5,
+  Belostomatidae: 5, Corixidae: 5, Planorbidae: 3, Physidae: 3,
   Chironomidae: 2, Culicidae: 2, Psychodidae: 2, Syrphidae: 1,
-  Tubificidae: 1, Glossiphoniidae: 1, Planorbidae: 3, Physidae: 3
+  Tubificidae: 1, Glossiphoniidae: 1
 };
 
-let state = loadState();
+const ID_TAXA = [
+  {
+    order: "Ephemeroptera",
+    families: "Baetidae, Leptophlebiidae, Leptohyphidae, Oligoneuriidae, Euthyplociidae",
+    traits: { patas: "6", colas: ["2", "3"], concha: "no", estuche: "no", branquias: "yes", filamentos: "no" },
+    diagnostic: "Ninfa con 2–3 cercos y branquias visibles en los segmentos abdominales. La familia requiere observar branquias, patas, boca y forma corporal."
+  },
+  {
+    order: "Plecoptera",
+    families: "Perlidae",
+    traits: { patas: "6", colas: "2", concha: "no", estuche: "no", branquias: "no", filamentos: "no" },
+    diagnostic: "Ninfa alargada con dos cercos; sin branquias laminares abdominales. En Perlidae pueden observarse branquias ramificadas en tórax o base de patas."
+  },
+  {
+    order: "Trichoptera",
+    families: "Calamoceratidae, Glossosomatidae, Helicopsychidae, Hydrobiosidae, Hydropsychidae, Hydroptilidae, Leptoceridae, Odontoceridae, Philopotamidae, Polycentropodidae, Xiphocentronidae",
+    traits: { patas: "6", colas: "0", concha: "no", branquias: "no", filamentos: "no", rasgo: "hooks" },
+    diagnostic: "Larva con cabeza endurecida, tres pares de patas y dos falsas patas terminales con ganchos. Algunas familias construyen estuches; otras viven libres o en redes."
+  },
+  {
+    order: "Odonata",
+    families: "Aeshnidae, Gomphidae, Libellulidae",
+    traits: { patas: "6", colas: "0", concha: "no", estuche: "no", branquias: "no", filamentos: "no", rasgo: "mask" },
+    diagnostic: "Ninfa robusta con ojos grandes y labio inferior extensible tipo máscara. Las branquias externas en forma de tres hojas indican Zygoptera, no estas familias de Anisoptera."
+  },
+  {
+    order: "Coleoptera",
+    families: "Dryopidae, Elmidae, Gyrinidae, Lutrochidae, Psephenidae",
+    traits: { patas: "6", colas: "0", concha: "no", estuche: "no", branquias: "no" },
+    diagnostic: "Larvas o adultos con cabeza definida y piezas bucales masticadoras; cuerpo y endurecimiento variables. Psephenidae suele ser aplanada y discoidal."
+  },
+  {
+    order: "Diptera",
+    families: "Ceratopogonidae, Chironomidae, Culicidae, Psychodidae, Simuliidae, Syrphidae, Tabanidae, Tipulidae",
+    traits: { patas: "0", colas: "0", concha: "no", estuche: "no", branquias: "no", rasgo: "worm" },
+    diagnostic: "Larva vermiforme sin patas torácicas articuladas. Las falsas patas, cápsula cefálica, sifones, discos y extremo posterior separan familias."
+  },
+  {
+    order: "Diptera",
+    families: "Simuliidae",
+    traits: { patas: "0", colas: "0", concha: "no", estuche: "no", branquias: "no", rasgo: "sucker" },
+    diagnostic: "Larva con cuerpo ensanchado posteriormente, abanicos cefálicos y disco adhesivo terminal; frecuente en corriente."
+  },
+  {
+    order: "Hemiptera",
+    families: "Belostomatidae, Corixidae, Gerridae, Naucoridae, Veliidae",
+    traits: { patas: "6", colas: "0", concha: "no", estuche: "no", branquias: "no", filamentos: "no", rasgo: "beak" },
+    diagnostic: "Ninfa o adulto con pico perforador ventral. La forma de patas, antenas y cuerpo ayuda a separar familias acuáticas y semiaquáticas."
+  },
+  {
+    order: "Megaloptera",
+    families: "Corydalidae",
+    traits: { patas: "6", colas: "0", concha: "no", estuche: "no", branquias: "no", filamentos: "yes" },
+    diagnostic: "Larva grande con mandíbulas, filamentos laterales a lo largo del abdomen y dos falsas patas anales con ganchos."
+  },
+  {
+    order: "Annelida",
+    families: "Glossiphoniidae, Tubificidae",
+    traits: { patas: "0", colas: "0", concha: "no", estuche: "no", branquias: "no", filamentos: "no", rasgo: "worm" },
+    diagnostic: "Cuerpo segmentado sin patas articuladas. Las sanguijuelas presentan ventosas; los oligoquetos son vermiformes y carecen de cápsula cefálica."
+  },
+  {
+    order: "Mollusca",
+    families: "Physidae, Planorbidae",
+    traits: { patas: "0", colas: "0", concha: "yes", estuche: "no", branquias: "no", filamentos: "no" },
+    diagnostic: "Gasterópodo con concha. Planorbidae suele tener enrollamiento plano; Physidae presenta concha alta y sinistral."
+  }
+];
 
-function loadState() {
-  const fallback = {
+let state = loadState();
+let lastCandidates = [];
+const photoQueues = new Map();
+let mediaDbPromise;
+
+function uid(prefix = "rec") {
+  if (crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function emptyState() {
+  return {
+    schemaVersion: 2,
     trip: {},
     observations: [],
     macroSamples: [],
-    flowSection: {},
-    verticals: []
+    identifications: [],
+    flowSections: [],
+    activeFlowId: null
   };
+}
+
+function loadState() {
+  let raw = {};
   try {
-    return { ...fallback, ...JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") };
+    raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || {};
+    if (!Object.keys(raw).length) {
+      raw = JSON.parse(localStorage.getItem(LEGACY_STORAGE_KEY) || "null") || {};
+    }
   } catch {
-    return fallback;
+    raw = {};
   }
+  const next = { ...emptyState(), ...raw };
+  next.observations = Array.isArray(raw.observations) ? raw.observations.map((record) => ({
+    ...record, id: record.id || uid("obs"), photoIds: record.photoIds || []
+  })) : [];
+  next.macroSamples = Array.isArray(raw.macroSamples) ? raw.macroSamples.map((record) => ({
+    ...record, id: record.id || uid("macro"), photoIds: record.photoIds || []
+  })) : [];
+  next.identifications = Array.isArray(raw.identifications) ? raw.identifications.map((record) => ({
+    ...record, id: record.id || uid("id"), photoIds: record.photoIds || []
+  })) : [];
+  next.flowSections = Array.isArray(raw.flowSections) ? raw.flowSections.map((record) => ({
+    ...record, id: record.id || uid("flow"), photoIds: record.photoIds || [],
+    verticals: Array.isArray(record.verticals) ? record.verticals : []
+  })) : [];
+  if (!next.flowSections.length && raw.flowSection && Object.keys(raw.flowSection).length) {
+    const migrated = {
+      ...raw.flowSection,
+      id: uid("flow"),
+      photoIds: [],
+      verticals: Array.isArray(raw.verticals) ? raw.verticals : []
+    };
+    next.flowSections.push(migrated);
+    next.activeFlowId = migrated.id;
+  }
+  if (next.activeFlowId && !next.flowSections.some((section) => section.id === next.activeFlowId)) {
+    next.activeFlowId = next.flowSections[0]?.id || null;
+  }
+  return next;
 }
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  document.getElementById("saveStatus").textContent = `Guardado ${new Date().toLocaleTimeString("es-CR")}`;
+  const status = document.getElementById("saveStatus");
+  status.textContent = `Guardado ${new Date().toLocaleTimeString("es-CR")}`;
   render();
 }
 
@@ -44,79 +170,10 @@ function formToObject(form) {
 
 function fillForm(form, values = {}) {
   [...form.elements].forEach((field) => {
-    if (field.name && values[field.name] !== undefined) field.value = values[field.name];
+    if (field.name && values[field.name] !== undefined && field.type !== "file") {
+      field.value = values[field.name];
+    }
   });
-}
-
-function familiesFromText(text) {
-  return (text || "")
-    .split(/[\n,;]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function bmwpScore(samples) {
-  const families = new Set(samples.flatMap((sample) => familiesFromText(sample.familias)));
-  let score = 0;
-  const missing = [];
-  families.forEach((family) => {
-    if (BMWP_CR[family] !== undefined) score += BMWP_CR[family];
-    else missing.push(family);
-  });
-  return { score, familyCount: families.size, missing };
-}
-
-function classifyBmwp(score) {
-  if (score > 120) return "Excelente";
-  if (score >= 101) return "Muy buena";
-  if (score >= 61) return "Aceptable";
-  if (score >= 36) return "Dudosa";
-  if (score >= 16) return "Critica";
-  return "Muy critica o sin datos suficientes";
-}
-
-function calculateFlow() {
-  const width = Number(state.flowSection.anchoTotal || 0);
-  const verticals = [...state.verticals]
-    .map((v) => ({
-      ...v,
-      distancia: Number(v.distancia),
-      profundidad: Number(v.profundidad),
-      velocidad: Number(v.velocidad)
-    }))
-    .filter((v) => Number.isFinite(v.distancia) && Number.isFinite(v.profundidad) && Number.isFinite(v.velocidad))
-    .sort((a, b) => a.distancia - b.distancia);
-
-  if (!width || verticals.length === 0) return { cubic: 0, liters: 0, verticals };
-
-  const points = [
-    { distancia: 0, profundidad: 0, velocidad: 0 },
-    ...verticals,
-    { distancia: width, profundidad: 0, velocidad: 0 }
-  ];
-
-  let cubic = 0;
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const left = points[i];
-    const right = points[i + 1];
-    const segmentWidth = Math.max(0, right.distancia - left.distancia);
-    const meanDepth = (left.profundidad + right.profundidad) / 2;
-    const meanVelocity = (left.velocidad + right.velocidad) / 2;
-    cubic += segmentWidth * meanDepth * meanVelocity;
-  }
-  return { cubic, liters: cubic * 1000, verticals };
-}
-
-function makeItem(title, rows, onDelete) {
-  const div = document.createElement("div");
-  div.className = "item";
-  div.innerHTML = `<h3>${escapeHtml(title)}</h3>${rows.map((row) => `<p>${escapeHtml(row)}</p>`).join("")}`;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = "Eliminar";
-  button.addEventListener("click", onDelete);
-  div.appendChild(button);
-  return div;
 }
 
 function escapeHtml(value) {
@@ -125,72 +182,524 @@ function escapeHtml(value) {
   }[char]));
 }
 
+function formatBytes(bytes = 0) {
+  if (!bytes) return "0 MB";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / (1024 ** index)).toFixed(index > 1 ? 1 : 0)} ${units[index]}`;
+}
+
+function normalizeFamily(value) {
+  const clean = String(value || "").trim().toLowerCase();
+  return Object.keys(BMWP_CR).find((family) => family.toLowerCase() === clean) || value.trim();
+}
+
+function familiesFromText(text) {
+  return (text || "")
+    .split(/[\n,;]/)
+    .map(normalizeFamily)
+    .filter(Boolean);
+}
+
+function bmwpScoreForSample(sample) {
+  const families = [...new Set(familiesFromText(sample.familias))];
+  const missing = [];
+  const score = families.reduce((sum, family) => {
+    if (BMWP_CR[family] === undefined) {
+      missing.push(family);
+      return sum;
+    }
+    return sum + BMWP_CR[family];
+  }, 0);
+  return { score, familyCount: families.length, missing };
+}
+
+function classifyBmwp(score) {
+  if (score > 120) return "Excelente";
+  if (score >= 101) return "Muy buena";
+  if (score >= 61) return "Aceptable";
+  if (score >= 36) return "Dudosa";
+  if (score >= 16) return "Crítica";
+  return "Muy crítica o sin datos suficientes";
+}
+
+function calculateFlow(section) {
+  const width = Number(section?.anchoTotal || 0);
+  const verticals = (section?.verticals || [])
+    .map((vertical, rawIndex) => ({
+      ...vertical,
+      rawIndex,
+      distancia: Number(vertical.distancia),
+      profundidad: Number(vertical.profundidad),
+      velocidad: Number(vertical.velocidad)
+    }))
+    .filter((vertical) =>
+      Number.isFinite(vertical.distancia) &&
+      Number.isFinite(vertical.profundidad) &&
+      Number.isFinite(vertical.velocidad)
+    )
+    .sort((a, b) => a.distancia - b.distancia);
+  if (!width || !verticals.length) return { cubic: 0, liters: 0, verticals };
+  const points = [
+    { distancia: 0, profundidad: 0, velocidad: 0 },
+    ...verticals,
+    { distancia: width, profundidad: 0, velocidad: 0 }
+  ];
+  let cubic = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const left = points[index];
+    const right = points[index + 1];
+    const segmentWidth = Math.max(0, right.distancia - left.distancia);
+    cubic += segmentWidth *
+      ((left.profundidad + right.profundidad) / 2) *
+      ((left.velocidad + right.velocidad) / 2);
+  }
+  return { cubic, liters: cubic * 1000, verticals };
+}
+
+function coordinateRow(record) {
+  const crtm = record.este && record.norte
+    ? `CRTM05: E ${Number(record.este).toFixed(2)} · N ${Number(record.norte).toFixed(2)} · ${record.crs || "EPSG:5367"}`
+    : "CRTM05: sin coordenadas";
+  const wgs = record.lat && record.lon
+    ? `WGS84: ${Number(record.lat).toFixed(7)}, ${Number(record.lon).toFixed(7)} · precisión ${record.precision || "s/d"} m`
+    : "WGS84: sin lectura";
+  return [crtm, wgs];
+}
+
+function convertLatLon(form) {
+  const lat = Number(form.elements.lat?.value);
+  const lon = Number(form.elements.lon?.value);
+  const crs = form.elements.crs?.value || "EPSG:5367";
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  const [east, north] = proj4("EPSG:4326", crs, [lon, lat]);
+  form.elements.este.value = east.toFixed(2);
+  form.elements.norte.value = north.toFixed(2);
+}
+
+function captureGps(form, button) {
+  const status = form.querySelector(".field-status");
+  if (!navigator.geolocation) {
+    status.textContent = "Este navegador no ofrece geolocalización.";
+    return;
+  }
+  button.disabled = true;
+  status.textContent = "Esperando una lectura GPS precisa…";
+  navigator.geolocation.getCurrentPosition((position) => {
+    const { latitude, longitude, accuracy, altitude } = position.coords;
+    form.elements.lat.value = latitude.toFixed(7);
+    form.elements.lon.value = longitude.toFixed(7);
+    form.elements.precision.value = Number(accuracy).toFixed(1);
+    form.elements.altitud.value = altitude == null ? "" : Number(altitude).toFixed(1);
+    form.elements.gpsFecha.value = new Date(position.timestamp).toISOString();
+    convertLatLon(form);
+    status.textContent = `Lectura capturada con precisión estimada de ${Number(accuracy).toFixed(1)} m.`;
+    button.disabled = false;
+  }, (error) => {
+    const messages = {
+      1: "Permiso de ubicación denegado.",
+      2: "No fue posible determinar la posición.",
+      3: "La lectura GPS agotó el tiempo de espera."
+    };
+    status.textContent = messages[error.code] || "No fue posible capturar la ubicación.";
+    button.disabled = false;
+  }, {
+    enableHighAccuracy: true,
+    timeout: 30000,
+    maximumAge: 0
+  });
+}
+
+function openMediaDb() {
+  if (mediaDbPromise) return mediaDbPromise;
+  mediaDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(MEDIA_DB, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      const store = db.createObjectStore(MEDIA_STORE, { keyPath: "id" });
+      store.createIndex("recordId", "recordId", { unique: false });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  return mediaDbPromise;
+}
+
+async function writePhotos(files, recordType, recordId) {
+  if (!files.length) return [];
+  const db = await openMediaDb();
+  const transaction = db.transaction(MEDIA_STORE, "readwrite");
+  const store = transaction.objectStore(MEDIA_STORE);
+  const ids = [];
+  files.forEach((file) => {
+    const id = uid("photo");
+    ids.push(id);
+    store.put({
+      id,
+      recordType,
+      recordId,
+      name: file.name || `${id}.jpg`,
+      type: file.type || "application/octet-stream",
+      size: file.size,
+      lastModified: file.lastModified || null,
+      createdAt: new Date().toISOString(),
+      blob: file
+    });
+  });
+  await transactionDone(transaction);
+  return ids;
+}
+
+function transactionDone(transaction) {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
+
+async function getPhotos(recordId) {
+  const db = await openMediaDb();
+  const transaction = db.transaction(MEDIA_STORE, "readonly");
+  const request = transaction.objectStore(MEDIA_STORE).index("recordId").getAll(recordId);
+  const result = await requestPromise(request);
+  await transactionDone(transaction);
+  return result;
+}
+
+async function getAllPhotos() {
+  const db = await openMediaDb();
+  const transaction = db.transaction(MEDIA_STORE, "readonly");
+  const result = await requestPromise(transaction.objectStore(MEDIA_STORE).getAll());
+  await transactionDone(transaction);
+  return result;
+}
+
+function requestPromise(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function deletePhoto(photoId) {
+  const db = await openMediaDb();
+  const transaction = db.transaction(MEDIA_STORE, "readwrite");
+  transaction.objectStore(MEDIA_STORE).delete(photoId);
+  await transactionDone(transaction);
+}
+
+async function deleteRecordPhotos(recordId) {
+  const photos = await getPhotos(recordId);
+  await Promise.all(photos.map((photo) => deletePhoto(photo.id)));
+}
+
+async function clearAllPhotos() {
+  const db = await openMediaDb();
+  const transaction = db.transaction(MEDIA_STORE, "readwrite");
+  transaction.objectStore(MEDIA_STORE).clear();
+  await transactionDone(transaction);
+}
+
+function collectionForType(recordType) {
+  if (recordType === "observation") return state.observations;
+  if (recordType === "macro") return state.macroSamples;
+  if (recordType === "identification") return state.identifications;
+  if (recordType === "flow") return state.flowSections;
+  return [];
+}
+
+function recordForType(recordType, recordId) {
+  return collectionForType(recordType).find((record) => record.id === recordId);
+}
+
+async function appendPhotos(recordType, recordId, files) {
+  const record = recordForType(recordType, recordId);
+  if (!record || !files.length) return;
+  try {
+    const ids = await writePhotos(files, recordType, recordId);
+    record.photoIds = [...(record.photoIds || []), ...ids];
+    saveState();
+    await updateStorageEstimate();
+  } catch (error) {
+    alert(`No fue posible guardar las fotografías. Verifique el espacio disponible. ${error.message}`);
+  }
+}
+
+function getQueueKey(form) {
+  return form.dataset.photoQueue;
+}
+
+function queueFiles(form, files) {
+  const key = getQueueKey(form);
+  const current = photoQueues.get(key) || [];
+  photoQueues.set(key, [...current, ...files]);
+  updateQueueStatus(form);
+}
+
+function updateQueueStatus(form) {
+  const count = (photoQueues.get(getQueueKey(form)) || []).length;
+  const status = form.querySelector(".photo-queue-status");
+  if (status) status.textContent = `${count} fotografía${count === 1 ? "" : "s"} preparada${count === 1 ? "" : "s"}`;
+}
+
+function resetQueue(form) {
+  photoQueues.set(getQueueKey(form), []);
+  const input = form.querySelector(".photo-input");
+  if (input) input.value = "";
+  updateQueueStatus(form);
+}
+
+async function addRecordFromForm(form, collection, recordType, prefix, additions = {}) {
+  const record = { ...formToObject(form), ...additions, id: uid(prefix), photoIds: [] };
+  collection.push(record);
+  const files = photoQueues.get(getQueueKey(form)) || [];
+  try {
+    record.photoIds = await writePhotos(files, recordType, record.id);
+  } catch (error) {
+    alert(`El punto se guardó, pero no todas las fotografías. ${error.message}`);
+  }
+  form.reset();
+  resetQueue(form);
+  saveState();
+  await updateStorageEstimate();
+  return record;
+}
+
+function makeItem(record, title, rows, recordType, onDelete, extraActions = []) {
+  const div = document.createElement("article");
+  div.className = "item";
+  div.innerHTML = `
+    <div class="item-head">
+      <div>
+        <h3>${escapeHtml(title)}</h3>
+        ${rows.map((row) => `<p>${escapeHtml(row)}</p>`).join("")}
+      </div>
+    </div>
+    <div class="item-actions"></div>
+    <div class="photo-gallery" data-gallery-record="${escapeHtml(record.id)}" data-gallery-type="${escapeHtml(recordType)}"></div>
+  `;
+  const actions = div.querySelector(".item-actions");
+  extraActions.forEach(({ label, action, primary = false }) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    if (primary) button.className = "primary";
+    button.addEventListener("click", action);
+    actions.appendChild(button);
+  });
+  const photoButton = document.createElement("button");
+  photoButton.type = "button";
+  photoButton.textContent = "Añadir fotografías";
+  photoButton.addEventListener("click", () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = true;
+    input.addEventListener("change", () => appendPhotos(recordType, record.id, [...input.files]));
+    input.click();
+  });
+  actions.appendChild(photoButton);
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.textContent = "Eliminar";
+  deleteButton.addEventListener("click", onDelete);
+  actions.appendChild(deleteButton);
+  return div;
+}
+
+async function hydratePhotoGalleries() {
+  const galleries = [...document.querySelectorAll("[data-gallery-record]")];
+  await Promise.all(galleries.map(async (gallery) => {
+    const recordId = gallery.dataset.galleryRecord;
+    const recordType = gallery.dataset.galleryType;
+    const photos = await getPhotos(recordId);
+    if (!document.body.contains(gallery)) return;
+    gallery.innerHTML = "";
+    photos.forEach((photo) => {
+      const tile = document.createElement("div");
+      tile.className = "photo-tile";
+      const image = document.createElement("img");
+      const objectUrl = URL.createObjectURL(photo.blob);
+      image.src = objectUrl;
+      image.alt = photo.name || "Fotografía de campo";
+      image.onload = () => URL.revokeObjectURL(objectUrl);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Quitar";
+      button.addEventListener("click", async () => {
+        if (!confirm("¿Quitar esta fotografía del almacenamiento local?")) return;
+        await deletePhoto(photo.id);
+        const record = recordForType(recordType, recordId);
+        if (record) record.photoIds = (record.photoIds || []).filter((id) => id !== photo.id);
+        saveState();
+        await updateStorageEstimate();
+      });
+      tile.append(image, button);
+      gallery.appendChild(tile);
+    });
+  }));
+}
+
+async function removeRecord(collection, index) {
+  const [record] = collection.splice(index, 1);
+  if (record) await deleteRecordPhotos(record.id);
+  if (record?.id === state.activeFlowId) {
+    state.activeFlowId = state.flowSections[0]?.id || null;
+  }
+  saveState();
+  await updateStorageEstimate();
+}
+
+function scoreCandidate(taxon, answers) {
+  let score = 0;
+  let compared = 0;
+  Object.entries(answers).forEach(([key, value]) => {
+    if (!value || key === "codigo" || key === "punto" || key === "notas") return;
+    if (key === "orden") {
+      compared += 2;
+      score += taxon.order === value ? 2 : -2;
+      return;
+    }
+    if (taxon.traits[key] === undefined) return;
+    compared += 1;
+    const expected = Array.isArray(taxon.traits[key]) ? taxon.traits[key] : [taxon.traits[key]];
+    score += expected.includes(value) ? 1 : -1;
+  });
+  return { score, compared };
+}
+
+function findCandidates() {
+  const answers = formToObject(document.getElementById("idForm"));
+  lastCandidates = ID_TAXA
+    .map((taxon) => ({ ...taxon, ...scoreCandidate(taxon, answers) }))
+    .filter((candidate) => candidate.compared === 0 || candidate.score > -1)
+    .sort((a, b) => b.score - a.score || b.compared - a.compared)
+    .slice(0, 6);
+  renderCandidates();
+}
+
+function renderCandidates() {
+  const container = document.getElementById("idCandidates");
+  if (!lastCandidates.length) {
+    container.innerHTML = "<div class=\"notice\">Complete varios rasgos y pulse “Buscar candidatos”.</div>";
+    return;
+  }
+  const best = Math.max(...lastCandidates.map((candidate) => candidate.score));
+  container.innerHTML = lastCandidates.map((candidate) => {
+    const label = candidate.score === best && candidate.score > 1
+      ? "Coincidencia alta"
+      : candidate.score >= 0 ? "Coincidencia parcial" : "Coincidencia baja";
+    return `
+      <article class="candidate">
+        <h3>${escapeHtml(candidate.order)}</h3>
+        <span class="confidence">${escapeHtml(label)}</span>
+        <p><strong>Familias por revisar:</strong> ${escapeHtml(candidate.families)}</p>
+        <p>${escapeHtml(candidate.diagnostic)}</p>
+      </article>
+    `;
+  }).join("");
+}
+
 function render() {
   fillForm(document.getElementById("tripForm"), state.trip);
-  fillForm(document.getElementById("sectionForm"), state.flowSection);
 
   const obsList = document.getElementById("obsList");
   obsList.innerHTML = "";
-  state.observations.forEach((obs, index) => {
-    obsList.appendChild(makeItem(obs.nombre || `Punto ${index + 1}`, [
-      `${obs.tipo || ""} | ${obs.lat || "sin lat"}, ${obs.lon || "sin lon"}`,
-      `Precision: ${obs.precision || "sin dato"} m | Fotos: ${obs.fotos || "sin dato"}`,
-      obs.notas || ""
-    ], () => {
-      state.observations.splice(index, 1);
-      saveState();
-    }));
+  state.observations.forEach((record, index) => {
+    obsList.appendChild(makeItem(record, record.nombre || `Punto ${index + 1}`, [
+      record.tipo || "Observación general",
+      ...coordinateRow(record),
+      record.notas || ""
+    ], "observation", () => removeRecord(state.observations, index)));
   });
 
   const macroList = document.getElementById("macroList");
   macroList.innerHTML = "";
-  state.macroSamples.forEach((sample, index) => {
-    macroList.appendChild(makeItem(sample.codigo || `Muestra ${index + 1}`, [
-      `${sample.metodo || ""} | ${sample.tiempo || "0"} min | ${sample.submuestras || "0"} submuestras`,
-      `Habitats: ${sample.habitats || "sin dato"}`,
-      `Familias: ${sample.familias || "sin dato"}`
-    ], () => {
-      state.macroSamples.splice(index, 1);
-      saveState();
-    }));
+  state.macroSamples.forEach((record, index) => {
+    const result = bmwpScoreForSample(record);
+    macroList.appendChild(makeItem(record, record.codigo || `Muestra ${index + 1}`, [
+      ...coordinateRow(record),
+      `${record.metodo || ""} · ${record.tiempo || "0"} min · ${record.submuestras || "0"} submuestras`,
+      `Hábitats: ${record.habitats || "sin dato"}`,
+      `Familias: ${record.familias || "sin dato"}`,
+      `BMWP-CR preliminar: ${result.score} · ${classifyBmwp(result.score)}` +
+        (result.missing.length ? ` · sin puntaje cargado: ${result.missing.join(", ")}` : "")
+    ], "macro", () => removeRecord(state.macroSamples, index)));
+  });
+  const lastSample = state.macroSamples.at(-1);
+  const latestScore = lastSample ? bmwpScoreForSample(lastSample) : null;
+  document.getElementById("bmwpSummary").textContent = latestScore
+    ? `Última muestra: ${lastSample.codigo || "sin código"} · BMWP-CR ${latestScore.score} · ${classifyBmwp(latestScore.score)} · ${latestScore.familyCount} familias`
+    : "Aún no hay muestras para calcular BMWP-CR.";
+
+  const idList = document.getElementById("idList");
+  idList.innerHTML = "";
+  state.identifications.forEach((record, index) => {
+    idList.appendChild(makeItem(record, record.codigo || `Organismo ${index + 1}`, [
+      `Punto/muestra: ${record.punto || "sin asociar"}`,
+      `Candidatos: ${(record.candidates || []).join(" · ") || "sin determinar"}`,
+      record.notas || ""
+    ], "identification", () => removeRecord(state.identifications, index)));
   });
 
-  const score = bmwpScore(state.macroSamples);
-  document.getElementById("bmwpSummary").textContent =
-    `BMWP-CR preliminar: ${score.score} | ${classifyBmwp(score.score)} | Familias: ${score.familyCount}` +
-    (score.missing.length ? ` | Sin puntaje cargado: ${score.missing.join(", ")}` : "");
+  const sectionList = document.getElementById("sectionList");
+  sectionList.innerHTML = "";
+  state.flowSections.forEach((section, index) => {
+    const flow = calculateFlow(section);
+    sectionList.appendChild(makeItem(section, section.codigo || `Sección ${index + 1}`, [
+      ...coordinateRow(section),
+      `Ancho: ${section.anchoTotal || "s/d"} m · ${section.verticals.length} verticales`,
+      `Caudal: ${flow.cubic.toFixed(4)} m³/s · ${flow.liters.toFixed(2)} L/s`
+    ], "flow", () => removeRecord(state.flowSections, index), [{
+      label: section.id === state.activeFlowId ? "Sección activa" : "Registrar verticales",
+      primary: section.id !== state.activeFlowId,
+      action: () => {
+        state.activeFlowId = section.id;
+        saveState();
+      }
+    }]));
+  });
 
+  const activeSection = state.flowSections.find((section) => section.id === state.activeFlowId);
+  const activeMessage = document.getElementById("activeSectionMessage");
+  const verticalForm = document.getElementById("verticalForm");
   const verticalList = document.getElementById("verticalList");
   verticalList.innerHTML = "";
-  const flow = calculateFlow();
-  flow.verticals.forEach((vertical, index) => {
-    verticalList.appendChild(makeItem(`Vertical ${index + 1}`, [
-      `Distancia: ${vertical.distancia} m | Profundidad: ${vertical.profundidad} m | Velocidad: ${vertical.velocidad} m/s`,
-      vertical.obs || ""
-    ], () => {
-      state.verticals.splice(index, 1);
-      saveState();
-    }));
-  });
+  [...verticalForm.elements].forEach((field) => { field.disabled = !activeSection; });
+  if (!activeSection) {
+    activeMessage.textContent = "Agregue o seleccione una sección para registrar verticales.";
+    document.getElementById("flowSummary").textContent = "Seleccione una sección.";
+  } else {
+    activeMessage.textContent = `Sección activa: ${activeSection.codigo || activeSection.punto || "sin código"}`;
+    const flow = calculateFlow(activeSection);
+    flow.verticals.forEach((vertical, displayIndex) => {
+      const simpleRecord = { id: `${activeSection.id}-vertical-${vertical.rawIndex}` };
+      const item = makeItem(simpleRecord, `Vertical ${displayIndex + 1}`, [
+        `Distancia: ${vertical.distancia} m · Profundidad: ${vertical.profundidad} m · Velocidad: ${vertical.velocidad} m/s`,
+        vertical.obs || ""
+      ], "none", () => {
+        activeSection.verticals.splice(vertical.rawIndex, 1);
+        saveState();
+      });
+      item.querySelector("button:nth-last-child(2)")?.remove();
+      item.querySelector(".photo-gallery")?.remove();
+      verticalList.appendChild(item);
+    });
+    const recommended = Number(activeSection.verticalesRecomendadas || 25);
+    const warning = activeSection.verticals.length < recommended
+      ? ` · advertencia ${activeSection.verticals.length}/${recommended} verticales`
+      : "";
+    document.getElementById("flowSummary").textContent =
+      `Caudal: ${flow.cubic.toFixed(4)} m³/s · ${flow.liters.toFixed(2)} L/s${warning}`;
+  }
 
-  const recommended = Number(state.flowSection.verticalesRecomendadas || 25);
-  const warning = state.verticals.length && state.verticals.length < recommended
-    ? ` | Advertencia: ${state.verticals.length}/${recommended} verticales`
-    : "";
-  document.getElementById("flowSummary").textContent =
-    `Caudal estimado: ${flow.cubic.toFixed(4)} m3/s | ${flow.liters.toFixed(2)} l/s${warning}`;
-
-  document.getElementById("jsonPreview").textContent = JSON.stringify(state, null, 2);
-}
-
-function download(filename, text, type) {
-  const blob = new Blob([text], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  document.getElementById("jsonPreview").textContent = JSON.stringify({
+    ...state,
+    media: "Las fotografías se incluyen en el respaldo ZIP y se omiten de esta vista."
+  }, null, 2);
+  renderCandidates();
+  void hydratePhotoGalleries();
 }
 
 function csvEscape(value) {
@@ -198,18 +707,108 @@ function csvEscape(value) {
 }
 
 function buildCsv() {
-  const rows = [["tipo", "codigo", "punto", "lat", "lon", "detalle"]];
-  state.observations.forEach((obs) => rows.push([
-    "observacion", obs.nombre, obs.tipo, obs.lat, obs.lon, obs.notas
+  const rows = [[
+    "tipo", "codigo", "punto", "crs", "este", "norte", "lat_wgs84", "lon_wgs84",
+    "precision_m", "altitud_m", "fecha_gps", "detalle"
+  ]];
+  state.observations.forEach((record) => rows.push([
+    "observacion", record.nombre, record.tipo, record.crs, record.este, record.norte,
+    record.lat, record.lon, record.precision, record.altitud, record.gpsFecha, record.notas
   ]));
-  state.macroSamples.forEach((sample) => rows.push([
-    "macroinvertebrados", sample.codigo, sample.punto, "", "", sample.familias
+  state.macroSamples.forEach((record) => rows.push([
+    "macroinvertebrados", record.codigo, record.punto, record.crs, record.este, record.norte,
+    record.lat, record.lon, record.precision, record.altitud, record.gpsFecha, record.familias
   ]));
-  state.verticals.forEach((vertical, index) => rows.push([
-    "vertical_caudal", `V${index + 1}`, state.flowSection.codigo || "", "", "",
-    `dist=${vertical.distancia}; prof=${vertical.profundidad}; vel=${vertical.velocidad}`
+  state.flowSections.forEach((section) => {
+    const flow = calculateFlow(section);
+    rows.push([
+      "perfil_caudal", section.codigo, section.punto, section.crs, section.este, section.norte,
+      section.lat, section.lon, section.precision, section.altitud, section.gpsFecha,
+      `ancho=${section.anchoTotal}; verticales=${section.verticals.length}; caudal_m3s=${flow.cubic}`
+    ]);
+    section.verticals.forEach((vertical, index) => rows.push([
+      "vertical_caudal", `V${index + 1}`, section.codigo, "", "", "", "", "", "", "", "",
+      `distancia_m=${vertical.distancia}; profundidad_m=${vertical.profundidad}; velocidad_ms=${vertical.velocidad}; nota=${vertical.obs || ""}`
+    ]));
+  });
+  state.identifications.forEach((record) => rows.push([
+    "identificacion", record.codigo, record.punto, "", "", "", "", "", "", "", "",
+    (record.candidates || []).join("; ")
   ]));
   return rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+}
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadText(filename, text, type) {
+  downloadBlob(filename, new Blob([text], { type }));
+}
+
+function safeFilename(value) {
+  return String(value || "archivo").replace(/[^\p{L}\p{N}._-]+/gu, "_");
+}
+
+async function exportZip() {
+  const button = document.getElementById("exportZip");
+  button.disabled = true;
+  button.textContent = "Preparando respaldo…";
+  try {
+    const zip = new JSZip();
+    const timestamp = new Date().toISOString();
+    zip.file("datos/BTMM-BMWT-CR.json", JSON.stringify({ ...state, exportedAt: timestamp }, null, 2));
+    zip.file("datos/BTMM-BMWT-CR.csv", buildCsv());
+    const photos = await getAllPhotos();
+    const manifest = [["photo_id", "tipo_registro", "id_registro", "nombre", "tipo_mime", "bytes", "fecha"]];
+    photos.forEach((photo, index) => {
+      const filename = `${String(index + 1).padStart(4, "0")}_${safeFilename(photo.name)}`;
+      zip.file(`fotografias/${safeFilename(photo.recordType)}/${safeFilename(photo.recordId)}/${filename}`, photo.blob);
+      manifest.push([
+        photo.id, photo.recordType, photo.recordId, photo.name, photo.type, photo.size, photo.createdAt
+      ]);
+    });
+    zip.file("datos/manifiesto_fotografias.csv",
+      manifest.map((row) => row.map(csvEscape).join(",")).join("\n"));
+    zip.file("LEAME.txt",
+      "Respaldo completo BTMM-BMWT-CR.\n" +
+      "datos/ contiene JSON, CSV y el manifiesto de fotografías.\n" +
+      "fotografias/ organiza los archivos por tipo e identificador del registro.\n" +
+      `Fecha de exportación: ${timestamp}\n`);
+    const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+    downloadBlob(`BTMM-BMWT-CR-respaldo-${Date.now()}.zip`, blob);
+  } catch (error) {
+    alert(`No fue posible crear el ZIP. ${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Descargar respaldo completo ZIP";
+  }
+}
+
+async function updateStorageEstimate() {
+  const element = document.getElementById("storageEstimate");
+  if (!navigator.storage?.estimate) {
+    element.textContent = "El navegador no informa la cuota disponible.";
+    return;
+  }
+  const estimate = await navigator.storage.estimate();
+  const persisted = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+  element.textContent =
+    `${formatBytes(estimate.usage)} usados de aproximadamente ${formatBytes(estimate.quota)} · ` +
+    `${persisted ? "almacenamiento persistente" : "almacenamiento no persistente"}`;
+}
+
+function updateNetworkStatus() {
+  document.getElementById("networkStatus").textContent = navigator.onLine
+    ? "En línea · datos locales"
+    : "Sin conexión · modo offline";
 }
 
 document.querySelectorAll(".tab").forEach((tab) => {
@@ -221,56 +820,122 @@ document.querySelectorAll(".tab").forEach((tab) => {
   });
 });
 
+document.querySelectorAll(".gps-button").forEach((button) => {
+  button.addEventListener("click", () => captureGps(button.closest("form"), button));
+});
+
+document.querySelectorAll(".point-form").forEach((form) => {
+  ["lat", "lon", "crs"].forEach((name) => {
+    form.elements[name]?.addEventListener("change", () => convertLatLon(form));
+  });
+});
+
+document.querySelectorAll(".photo-input").forEach((input) => {
+  input.addEventListener("change", () => {
+    queueFiles(input.closest("form"), [...input.files]);
+    input.value = "";
+  });
+});
+
 document.getElementById("tripForm").addEventListener("input", (event) => {
   state.trip = formToObject(event.currentTarget);
-  saveState();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  document.getElementById("saveStatus").textContent =
+    `Guardado ${new Date().toLocaleTimeString("es-CR")}`;
+  document.getElementById("jsonPreview").textContent = JSON.stringify(state, null, 2);
 });
 
-document.getElementById("sectionForm").addEventListener("input", (event) => {
-  state.flowSection = formToObject(event.currentTarget);
-  saveState();
-});
-
-document.getElementById("obsForm").addEventListener("submit", (event) => {
+document.getElementById("obsForm").addEventListener("submit", async (event) => {
   event.preventDefault();
-  state.observations.push(formToObject(event.currentTarget));
-  event.currentTarget.reset();
-  saveState();
+  await addRecordFromForm(event.currentTarget, state.observations, "observation", "obs");
 });
 
-document.getElementById("macroForm").addEventListener("submit", (event) => {
+document.getElementById("macroForm").addEventListener("submit", async (event) => {
   event.preventDefault();
-  state.macroSamples.push(formToObject(event.currentTarget));
-  event.currentTarget.reset();
+  await addRecordFromForm(event.currentTarget, state.macroSamples, "macro", "macro");
+});
+
+document.getElementById("sectionForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const section = await addRecordFromForm(
+    event.currentTarget, state.flowSections, "flow", "flow", { verticals: [] }
+  );
+  state.activeFlowId = section.id;
   saveState();
 });
 
 document.getElementById("verticalForm").addEventListener("submit", (event) => {
   event.preventDefault();
-  state.verticals.push(formToObject(event.currentTarget));
+  const section = state.flowSections.find((item) => item.id === state.activeFlowId);
+  if (!section) return;
+  const vertical = formToObject(event.currentTarget);
+  if (Number(vertical.distancia) > Number(section.anchoTotal)) {
+    alert("La distancia de la vertical no puede superar el ancho mojado de la sección.");
+    return;
+  }
+  section.verticals.push(vertical);
   event.currentTarget.reset();
   saveState();
 });
 
+document.getElementById("runIdentification").addEventListener("click", findCandidates);
+
+document.getElementById("idForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!lastCandidates.length) findCandidates();
+  const candidates = lastCandidates.slice(0, 3).map((candidate) =>
+    `${candidate.order}: ${candidate.families}`
+  );
+  await addRecordFromForm(
+    event.currentTarget, state.identifications, "identification", "id", { candidates }
+  );
+  lastCandidates = [];
+  renderCandidates();
+});
+
+document.getElementById("exportZip").addEventListener("click", exportZip);
 document.getElementById("exportJson").addEventListener("click", () => {
-  download(`BTMM-BMWT-CR-${Date.now()}.json`, JSON.stringify(state, null, 2), "application/json");
+  downloadText(
+    `BTMM-BMWT-CR-${Date.now()}.json`,
+    JSON.stringify(state, null, 2),
+    "application/json"
+  );
 });
-
 document.getElementById("exportCsv").addEventListener("click", () => {
-  download(`BTMM-BMWT-CR-${Date.now()}.csv`, buildCsv(), "text/csv;charset=utf-8");
+  downloadText(`BTMM-BMWT-CR-${Date.now()}.csv`, buildCsv(), "text/csv;charset=utf-8");
 });
-
 document.getElementById("printReport").addEventListener("click", () => window.print());
 
-document.getElementById("clearData").addEventListener("click", () => {
-  if (!confirm("Esto borra los datos guardados en este dispositivo. Desea continuar?")) return;
-  localStorage.removeItem(STORAGE_KEY);
-  state = loadState();
-  saveState();
+document.getElementById("requestPersistence").addEventListener("click", async () => {
+  if (!navigator.storage?.persist) {
+    alert("Este navegador no permite solicitar almacenamiento persistente.");
+    return;
+  }
+  const granted = await navigator.storage.persist();
+  alert(granted
+    ? "El navegador concedió almacenamiento persistente."
+    : "El navegador no concedió almacenamiento persistente; mantenga respaldos ZIP frecuentes.");
+  await updateStorageEstimate();
 });
+
+document.getElementById("clearData").addEventListener("click", async () => {
+  if (!confirm("Esto borra todos los datos y fotografías guardados en este dispositivo. ¿Continuar?")) return;
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
+  await clearAllPhotos();
+  state = emptyState();
+  photoQueues.clear();
+  saveState();
+  await updateStorageEstimate();
+});
+
+window.addEventListener("online", updateNetworkStatus);
+window.addEventListener("offline", updateNetworkStatus);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
 }
 
+updateNetworkStatus();
 render();
+void updateStorageEstimate();

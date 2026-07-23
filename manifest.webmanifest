@@ -1,10 +1,11 @@
 {
   "name": "BTMM-BMWT-CR",
   "short_name": "BTMM-BMWT",
-  "description": "PWA para registro de muestreo BTMM-BMWT-CR, perfil mojado y caudal.",
+  "description": "PWA offline para muestreo de macroinvertebrados, CRTM05, fotografías, perfil mojado y caudal.",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#f5f7f2",
+  "background_color": "#f4f7f3",
   "theme_color": "#0f3d3e",
   "icons": [
     {

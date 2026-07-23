@@ -10,14 +10,33 @@ const ASSETS = [
   "./vendor/jszip.min.js"
 ];
 
+async function responsesDiffer(cached, fresh) {
+  if (!cached) return true;
+  const [cachedBytes, freshBytes] = await Promise.all([
+    cached.arrayBuffer(),
+    fresh.clone().arrayBuffer()
+  ]);
+  if (cachedBytes.byteLength !== freshBytes.byteLength) return true;
+  const before = new Uint8Array(cachedBytes);
+  const after = new Uint8Array(freshBytes);
+  for (let index = 0; index < before.length; index += 1) {
+    if (before[index] !== after[index]) return true;
+  }
+  return false;
+}
+
 async function refreshAppCache() {
   const cache = await caches.open(CACHE_NAME);
+  let changed = false;
   await Promise.all(ASSETS.map(async (url) => {
+    const cached = await cache.match(url);
     const request = new Request(url, { cache: "reload" });
     const response = await fetch(request);
     if (!response.ok) throw new Error(`No se pudo actualizar ${url}: ${response.status}`);
+    if (await responsesDiffer(cached, response)) changed = true;
     await cache.put(url, response.clone());
   }));
+  return changed;
 }
 
 self.addEventListener("install", (event) => {
@@ -48,7 +67,10 @@ self.addEventListener("message", (event) => {
   if (event.data?.type === "REFRESH_APP_CACHE") {
     event.waitUntil(
       refreshAppCache()
-        .then(() => event.source?.postMessage({ type: "APP_CACHE_REFRESHED" }))
+        .then((changed) => event.source?.postMessage({
+          type: "APP_CACHE_REFRESHED",
+          changed
+        }))
         .catch((error) => {
           console.warn("No fue posible renovar la caché de la aplicación.", error);
           event.source?.postMessage({ type: "APP_CACHE_REFRESH_FAILED" });

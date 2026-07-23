@@ -1040,9 +1040,10 @@ async function setupServiceWorkerUpdates() {
 
   navigator.serviceWorker.addEventListener("message", (event) => {
     if (event.data?.type === "APP_CACHE_REFRESHED") {
-      setStatus("Aplicación actualizada");
+      const changed = Boolean(event.data.changed);
+      setStatus(changed ? "Nueva versión disponible" : "Aplicación al día");
       if (button) button.disabled = false;
-      reloadOnce();
+      if (changed || manualRequest) reloadOnce();
     }
     if (event.data?.type === "APP_CACHE_REFRESH_FAILED") {
       setStatus("No se pudo comprobar · versión offline disponible");

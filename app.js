@@ -45,7 +45,8 @@ function defaultTrip() {
     fecha: localDateValue(),
     horaInicio: localTimeValue(),
     meteoInicial: "",
-    participantes: [defaultParticipant()]
+    participantes: [defaultParticipant()],
+    locked: false
   };
 }
 
@@ -75,7 +76,7 @@ function normalizeParticipants(value, useDefault = false) {
 }
 
 function persistDraft() {
-  state.schemaVersion = 3;
+  state.schemaVersion = 4;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   document.getElementById("saveStatus").textContent =
     "Guardado " + new Date().toLocaleTimeString("es-CR");
@@ -92,6 +93,13 @@ let keyResult = null;
 let keyUnknown = "";
 const photoQueues = new Map();
 let mediaDbPromise;
+let fieldMap = null;
+let mapRecordLayer = null;
+let currentLocationMarker = null;
+let currentAccuracyCircle = null;
+let currentLatLng = null;
+let locationWatchId = null;
+let mapCenteredOnFirstFix = false;
 
 function uid(prefix = "rec") {
   if (crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
@@ -100,7 +108,7 @@ function uid(prefix = "rec") {
 
 function emptyState() {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     trip: defaultTrip(),
     closure: {},
     observations: [],
@@ -134,7 +142,7 @@ function loadState() {
   if (!next.closure.horaFinal && rawTrip.horaCierre) {
     next.closure.horaFinal = rawTrip.horaCierre;
   }
-  next.schemaVersion = 3;
+  next.schemaVersion = 4;
   next.observations = Array.isArray(raw.observations) ? raw.observations.map((record) => ({
     ...record, id: record.id || uid("obs"), photoIds: record.photoIds || []
   })) : [];
@@ -890,6 +898,8 @@ function render() {
     media: "Las fotografías se incluyen en el respaldo ZIP y se omiten de esta vista."
   }, null, 2);
   renderDichotomousKey();
+  updateTripLockUI();
+  renderMapRecords();
   void hydratePhotoGalleries();
 }
 
@@ -1014,6 +1024,296 @@ async function updateStorageEstimate() {
     `${persisted ? "almacenamiento persistente" : "almacenamiento no persistente"}`;
 }
 
+
+function updateTripLockUI() {
+  const form = document.getElementById("tripForm");
+  if (!form) return;
+  const locked = Boolean(state.trip.locked);
+  [...form.elements].forEach((field) => {
+    field.disabled = locked;
+  });
+  document.getElementById("showParticipantPicker").disabled = locked;
+  document.querySelectorAll(".participant-remove").forEach((button) => {
+    button.disabled = locked;
+  });
+  const lockButton = document.getElementById("lockTripButton");
+  const continueButton = document.getElementById("continueToMap");
+  const status = document.getElementById("tripLockStatus");
+  if (lockButton) lockButton.textContent = locked ? "Desbloquear edición" : "Bloquear edición";
+  if (continueButton) continueButton.disabled = !locked;
+  if (status) {
+    status.textContent = locked
+      ? "Edición bloqueada. Puede continuar al mapa."
+      : "Revise los datos y bloquee la edición antes de continuar.";
+    status.classList.toggle("locked", locked);
+  }
+}
+
+function setTripLocked(locked) {
+  state.trip.locked = Boolean(locked);
+  persistDraft();
+  render();
+}
+
+function prepareFieldWorkflow() {
+  const macroPanel = document.getElementById("macro");
+  const keyPanel = document.getElementById("identificar");
+  if (macroPanel && keyPanel && keyPanel.parentElement !== macroPanel) {
+    keyPanel.classList.remove("panel");
+    keyPanel.classList.add("macro-key-subsection");
+    macroPanel.appendChild(keyPanel);
+    const keyJump = document.createElement("button");
+    keyJump.type = "button";
+    keyJump.className = "secondary key-jump";
+    keyJump.textContent = "Abrir clave dicotómica";
+    keyJump.addEventListener("click", () => {
+      keyPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      keyPanel.querySelector("input:not([type='hidden'])")?.focus({ preventScroll: true });
+    });
+    macroPanel.querySelector(".section-head")?.appendChild(keyJump);
+  }
+
+  const exportPanel = document.getElementById("exportar");
+  const closureCard = exportPanel?.querySelector(".closure-card");
+  if (exportPanel && closureCard && !document.getElementById("cierre")) {
+    const closurePanel = document.createElement("section");
+    closurePanel.id = "cierre";
+    closurePanel.className = "panel record-sheet";
+    closurePanel.setAttribute("aria-label", "Cierre de gira");
+    closurePanel.appendChild(closureCard);
+    exportPanel.parentNode.insertBefore(closurePanel, exportPanel);
+    const closureForm = document.getElementById("closureForm");
+    if (closureForm && !document.getElementById("saveClosure")) {
+      const saveButton = document.createElement("button");
+      saveButton.type = "submit";
+      saveButton.id = "saveClosure";
+      saveButton.className = "primary wide";
+      saveButton.textContent = "Guardar cierre de gira";
+      closureForm.appendChild(saveButton);
+      closureForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        state.closure = { ...state.closure, ...formToObject(event.currentTarget) };
+        persistDraft();
+        closeRecordSheet();
+      });
+    }
+  }
+
+  ["macro", "caudal", "cierre", "exportar"].forEach((panelId) => {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    panel.classList.add("record-sheet");
+    if (!panel.querySelector(":scope > .sheet-header")) {
+      const header = document.createElement("div");
+      header.className = "sheet-header";
+      const title = panel.querySelector("h2, h3")?.textContent || "Registro";
+      header.innerHTML = '<strong>' + escapeHtml(title) + '</strong>';
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "sheet-close";
+      close.setAttribute("aria-label", "Cerrar y volver al mapa");
+      close.textContent = "×";
+      close.addEventListener("click", closeRecordSheet);
+      header.appendChild(close);
+      panel.prepend(header);
+    }
+  });
+  updateTripLockUI();
+}
+
+function openRecordMenu() {
+  const menu = document.getElementById("recordMenu");
+  if (!menu) return;
+  menu.hidden = false;
+  document.body.classList.add("menu-open");
+  menu.querySelector("[data-open-record]")?.focus();
+}
+
+function closeRecordMenu() {
+  const menu = document.getElementById("recordMenu");
+  if (!menu) return;
+  menu.hidden = true;
+  document.body.classList.remove("menu-open");
+  document.getElementById("mapAddRecord")?.focus({ preventScroll: true });
+}
+
+function openRecordSheet(panelId) {
+  closeRecordMenu();
+  activatePanel(panelId, { scroll: false });
+  document.body.classList.add("sheet-open");
+  requestAnimationFrame(() => {
+    document.getElementById(panelId)?.querySelector("input:not([type='hidden']), select, textarea")?.focus({ preventScroll: true });
+  });
+}
+
+function closeRecordSheet() {
+  document.body.classList.remove("sheet-open");
+  activatePanel("mapa", { scroll: false });
+}
+
+function recordLatLng(record) {
+  const lat = Number(record.lat);
+  const lon = Number(record.lon);
+  if (Number.isFinite(lat) && Number.isFinite(lon)) return [lat, lon];
+  const east = Number(record.este);
+  const north = Number(record.norte);
+  if (!Number.isFinite(east) || !Number.isFinite(north)) return null;
+  try {
+    const converted = proj4(record.crs || "EPSG:5367", "EPSG:4326", [east, north]);
+    return [converted[1], converted[0]];
+  } catch {
+    return null;
+  }
+}
+
+function mapIcon(kind) {
+  const labels = { macro: "M", flow: "C", reference: "R" };
+  return L.divIcon({
+    className: "field-map-div-icon",
+    html: '<span class="map-pin map-pin--' + kind + '"><b>' + labels[kind] + "</b></span>",
+    iconSize: [34, 42],
+    iconAnchor: [17, 39],
+    popupAnchor: [0, -36]
+  });
+}
+
+function renderMapRecords() {
+  if (!fieldMap || !mapRecordLayer || !window.L) return;
+  mapRecordLayer.clearLayers();
+  const groups = [
+    { kind: "macro", records: state.macroSamples, title: (r, i) => r.codigo || r.punto || "Muestra " + (i + 1) },
+    { kind: "flow", records: state.flowSections, title: (r, i) => r.codigo || r.punto || "Caudal " + (i + 1) },
+    { kind: "reference", records: state.observations, title: (r, i) => r.nombre || "Referencia " + (i + 1) }
+  ];
+  let count = 0;
+  groups.forEach((group) => {
+    group.records.forEach((record, index) => {
+      const latLng = recordLatLng(record);
+      if (!latLng) return;
+      count += 1;
+      const marker = L.marker(latLng, { icon: mapIcon(group.kind), keyboard: true });
+      const crtm = coordinateRow(record)[0] || "CRTM05: sin dato";
+      marker.bindPopup(
+        "<strong>" + escapeHtml(group.title(record, index)) + "</strong><br>" +
+        escapeHtml(crtm) + "<br>" +
+        escapeHtml(group.kind === "flow" ? "Registro de caudal" : group.kind === "macro" ? "Muestreo de macroinvertebrados" : (record.tipo || "Referencia"))
+      );
+      marker.addTo(mapRecordLayer);
+    });
+  });
+  const countLabel = document.getElementById("mapPointCount");
+  if (countLabel) countLabel.textContent = count + (count === 1 ? " punto" : " puntos");
+}
+
+function updateCurrentLocation(position, center = false) {
+  if (!fieldMap || !window.L) return;
+  const lat = position.coords.latitude;
+  const lon = position.coords.longitude;
+  const accuracy = Number(position.coords.accuracy || 0);
+  currentLatLng = [lat, lon];
+  if (!currentLocationMarker) {
+    currentLocationMarker = L.circleMarker(currentLatLng, {
+      radius: 9,
+      color: "#ffffff",
+      weight: 3,
+      fillColor: "#1976d2",
+      fillOpacity: 1
+    }).addTo(fieldMap).bindPopup("Ubicación actual");
+    currentAccuracyCircle = L.circle(currentLatLng, {
+      radius: accuracy,
+      color: "#1976d2",
+      weight: 1,
+      fillColor: "#1976d2",
+      fillOpacity: 0.12
+    }).addTo(fieldMap);
+  } else {
+    currentLocationMarker.setLatLng(currentLatLng);
+    currentAccuracyCircle.setLatLng(currentLatLng).setRadius(accuracy);
+  }
+  let crtmText = "";
+  try {
+    const crtm = proj4("EPSG:4326", "EPSG:5367", [lon, lat]);
+    crtmText = " · E " + crtm[0].toFixed(1) + " / N " + crtm[1].toFixed(1);
+  } catch {
+    crtmText = "";
+  }
+  const status = document.getElementById("mapGpsStatus");
+  if (status) status.textContent = "GPS ±" + accuracy.toFixed(1) + " m" + crtmText;
+  if (center || !mapCenteredOnFirstFix) {
+    fieldMap.setView(currentLatLng, Math.max(fieldMap.getZoom(), 17));
+    mapCenteredOnFirstFix = true;
+  }
+}
+
+function handleMapLocationError(error) {
+  const messages = {
+    1: "Permiso de ubicación denegado",
+    2: "Ubicación no disponible",
+    3: "Tiempo de GPS agotado"
+  };
+  const status = document.getElementById("mapGpsStatus");
+  if (status) status.textContent = messages[error?.code] || "No fue posible obtener la ubicación";
+}
+
+function startLocationWatch() {
+  if (locationWatchId !== null || !navigator.geolocation) return;
+  locationWatchId = navigator.geolocation.watchPosition(
+    (position) => updateCurrentLocation(position),
+    handleMapLocationError,
+    { enableHighAccuracy: true, maximumAge: 3000, timeout: 30000 }
+  );
+}
+
+function locateOnMap() {
+  if (currentLatLng && fieldMap) {
+    fieldMap.setView(currentLatLng, Math.max(fieldMap.getZoom(), 18));
+    currentLocationMarker?.openPopup();
+    return;
+  }
+  if (!navigator.geolocation) {
+    handleMapLocationError();
+    return;
+  }
+  const status = document.getElementById("mapGpsStatus");
+  if (status) status.textContent = "Buscando ubicación precisa…";
+  navigator.geolocation.getCurrentPosition(
+    (position) => updateCurrentLocation(position, true),
+    handleMapLocationError,
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+  );
+}
+
+function initFieldMap() {
+  if (fieldMap || !window.L) {
+    if (!window.L) {
+      const status = document.getElementById("mapGpsStatus");
+      if (status) status.textContent = "No se pudo cargar el motor cartográfico";
+    }
+    return;
+  }
+  fieldMap = L.map("fieldMap", {
+    zoomControl: true,
+    attributionControl: true,
+    preferCanvas: true
+  }).setView([9.65, -83.85], 10);
+  const imagery = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    {
+      maxZoom: 20,
+      attribution: "Imagery © Esri, Maxar, Earthstar Geographics and contributors"
+    }
+  );
+  imagery.on("tileerror", () => {
+    const status = document.getElementById("mapGpsStatus");
+    if (status && !navigator.onLine) status.textContent = "Sin conexión · se muestran las imágenes ya visitadas";
+  });
+  imagery.addTo(fieldMap);
+  L.control.scale({ imperial: false, position: "bottomleft" }).addTo(fieldMap);
+  mapRecordLayer = L.layerGroup().addTo(fieldMap);
+  renderMapRecords();
+  startLocationWatch();
+}
+
 function updateNetworkStatus() {
   document.getElementById("networkStatus").textContent = navigator.onLine
     ? "En línea · datos locales"
@@ -1023,7 +1323,9 @@ function updateNetworkStatus() {
 function activatePanel(panelId, options = {}) {
   const panel = document.getElementById(panelId);
   const tab = document.querySelector(`.tab[data-panel="${panelId}"]`);
-  if (!panel || !tab) return;
+  if (!panel) return;
+  const sheetIds = ["macro", "caudal", "cierre", "exportar"];
+  const isRecordSheet = sheetIds.includes(panelId);
 
   document.querySelectorAll(".tab").forEach((item) => {
     const active = item === tab;
@@ -1031,11 +1333,20 @@ function activatePanel(panelId, options = {}) {
     item.setAttribute("aria-current", active ? "page" : "false");
   });
   document.querySelectorAll(".panel").forEach((item) => {
-    item.classList.toggle("active", item === panel);
+    item.classList.toggle("active", item === panel || (isRecordSheet && item.id === "mapa"));
   });
 
+  document.body.classList.toggle("map-mode", panelId === "mapa" || isRecordSheet);
+  document.body.classList.toggle("sheet-open", isRecordSheet);
   history.replaceState(null, "", `#${panelId}`);
   sessionStorage.setItem("btmm-active-panel", panelId);
+  if (panelId === "mapa") {
+    initFieldMap();
+    requestAnimationFrame(() => {
+      fieldMap?.invalidateSize();
+      renderMapRecords();
+    });
+  }
   if (options.scroll !== false) {
     window.scrollTo({ top: 0, behavior: options.smooth ? "smooth" : "auto" });
   }
@@ -1056,6 +1367,28 @@ document.querySelectorAll("[data-go-panel]").forEach((button) => {
   });
 });
 
+document.getElementById("lockTripButton")?.addEventListener("click", () => {
+  setTripLocked(!state.trip.locked);
+});
+document.getElementById("continueToMap")?.addEventListener("click", () => {
+  if (!state.trip.locked) {
+    alert("Bloquee primero la edición de los datos preliminares.");
+    return;
+  }
+  activatePanel("mapa");
+});
+document.getElementById("mapBackToTrip")?.addEventListener("click", () => activatePanel("gira"));
+document.getElementById("mapLocate")?.addEventListener("click", locateOnMap);
+document.getElementById("mapBackup")?.addEventListener("click", () => openRecordSheet("exportar"));
+document.getElementById("mapAddRecord")?.addEventListener("click", openRecordMenu);
+document.getElementById("closeRecordMenu")?.addEventListener("click", closeRecordMenu);
+document.getElementById("recordMenu")?.addEventListener("click", (event) => {
+  if (event.target === event.currentTarget) closeRecordMenu();
+});
+document.querySelectorAll("[data-open-record]").forEach((button) => {
+  button.addEventListener("click", () => openRecordSheet(button.dataset.openRecord));
+});
+
 document.querySelectorAll(".gps-button").forEach((button) => {
   button.addEventListener("click", () => captureGps(button.closest("form"), button));
 });
@@ -1074,6 +1407,7 @@ document.querySelectorAll(".photo-input").forEach((input) => {
 });
 
 document.getElementById("tripForm").addEventListener("input", (event) => {
+  if (state.trip.locked) return;
   state.trip = {
     ...state.trip,
     ...formToObject(event.currentTarget),
@@ -1114,6 +1448,7 @@ document.getElementById("obsForm").addEventListener("submit", async (event) => {
 document.getElementById("macroForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   await addRecordFromForm(event.currentTarget, state.macroSamples, "macro", "macro");
+  closeRecordSheet();
 });
 
 document.getElementById("sectionForm").addEventListener("submit", async (event) => {
@@ -1150,8 +1485,9 @@ document.getElementById("idForm").addEventListener("submit", async (event) => {
     return;
   }
   const determination = { ...keyResult };
+  const identifiedForm = event.currentTarget;
   await addRecordFromForm(
-    event.currentTarget,
+    identifiedForm,
     state.identifications,
     "identification",
     "id",
@@ -1166,6 +1502,15 @@ document.getElementById("idForm").addEventListener("submit", async (event) => {
       identifiedAt: new Date().toISOString()
     }
   );
+  if (String(determination.rank || "").toLowerCase() === "familia") {
+    const familyField = document.getElementById("macroForm")?.elements.familias;
+    if (familyField) {
+      const existing = familiesFromText(familyField.value);
+      if (!existing.some((family) => family.toLowerCase() === determination.taxon.toLowerCase())) {
+        familyField.value = [...existing, determination.taxon].join("\n");
+      }
+    }
+  }
   resetDichotomousKey();
 });
 
@@ -1330,9 +1675,16 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => void setupServiceWorkerUpdates());
 }
 
+prepareFieldWorkflow();
 updateNetworkStatus();
 render();
 void updateStorageEstimate();
 
-const requestedPanel = location.hash.slice(1) || sessionStorage.getItem("btmm-active-panel");
+let requestedPanel = location.hash.slice(1) || sessionStorage.getItem("btmm-active-panel");
+if (requestedPanel === "identificar") requestedPanel = "macro";
+const workflowPanels = ["gira", "mapa", "macro", "caudal", "cierre", "exportar"];
+if (!workflowPanels.includes(requestedPanel)) requestedPanel = "";
+if (!requestedPanel || (requestedPanel !== "gira" && !state.trip.locked)) {
+  requestedPanel = state.trip.locked ? "mapa" : "gira";
+}
 if (requestedPanel) activatePanel(requestedPanel, { scroll: false });

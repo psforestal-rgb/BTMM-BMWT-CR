@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f3d3e">
+    <title>BTMM-BMWT-CR</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">PWA offline-first</p>
+        <h1>BTMM-BMWT-CR</h1>
+        <p>Registro de giras, macroinvertebrados acuaticos, perfil mojado y caudal por seccion.</p>
+      </div>
+      <div class="status-pill" id="saveStatus">Sin cambios</div>
+    </header>
+
+    <nav class="tabs" aria-label="Secciones principales">
+      <button class="tab active" data-panel="gira">Gira</button>
+      <button class="tab" data-panel="observaciones">Observaciones</button>
+      <button class="tab" data-panel="macro">Macroinvertebrados</button>
+      <button class="tab" data-panel="caudal">Perfil y caudal</button>
+      <button class="tab" data-panel="exportar">Exportar</button>
+    </nav>
+
+    <main>
+      <section class="panel active" id="gira">
+        <div class="section-head">
+          <h2>Datos preliminares de gira</h2>
+          <p>Estos datos identifican el expediente, equipo de campo, cuerpo de agua y condiciones generales.</p>
+        </div>
+        <form class="grid-form" id="tripForm">
+          <label>Numero de expediente
+            <input name="expediente" autocomplete="off" placeholder="Ej. DA-UHCAROC-0247-2026">
+          </label>
+          <label>Fecha
+            <input name="fecha" type="date">
+          </label>
+          <label>Hora de inicio
+            <input name="horaInicio" type="time">
+          </label>
+          <label>Hora de cierre
+            <input name="horaCierre" type="time">
+          </label>
+          <label>Participantes
+            <textarea name="participantes" rows="3" placeholder="Nombres, institucion y rol"></textarea>
+          </label>
+          <label>Area protegida o sector
+            <input name="sector" placeholder="Ej. Parque Nacional Los Quetzales, sector Dos Amigos">
+          </label>
+          <label>Nombre del cuerpo de agua
+            <input name="cuerpoAgua" placeholder="Rio, quebrada, naciente o tramo">
+          </label>
+          <label>Objetivo de la gira
+            <textarea name="objetivo" rows="3" placeholder="Inspeccion, monitoreo, linea base, denuncia, seguimiento"></textarea>
+          </label>
+          <label>Condicion meteorologica
+            <select name="meteo">
+              <option value="">Seleccione</option>
+              <option>Soleado</option>
+              <option>Nublado</option>
+              <option>Llovizna</option>
+              <option>Lluvia reciente</option>
+              <option>Lluvia durante el muestreo</option>
+            </select>
+          </label>
+          <label>Observaciones generales
+            <textarea name="observaciones" rows="3"></textarea>
+          </label>
+        </form>
+      </section>
+
+      <section class="panel" id="observaciones">
+        <div class="section-head">
+          <h2>Puntos de observacion</h2>
+          <p>Registre puntos de referencia, impactos, accesos, coordenadas, fotografias y notas de campo.</p>
+        </div>
+        <form class="grid-form" id="obsForm">
+          <label>Nombre del punto
+            <input name="nombre" required placeholder="Ej. Puente, toma, remanso, rapida">
+          </label>
+          <label>Tipo
+            <select name="tipo">
+              <option>Observacion general</option>
+              <option>Punto de muestreo macroinvertebrados</option>
+              <option>Punto de perfil mojado</option>
+              <option>Impacto o amenaza</option>
+              <option>Acceso</option>
+            </select>
+          </label>
+          <label>Latitud WGS84
+            <input name="lat" type="number" step="0.000001" placeholder="9.000000">
+          </label>
+          <label>Longitud WGS84
+            <input name="lon" type="number" step="0.000001" placeholder="-83.000000">
+          </label>
+          <label>Precision GPS estimada (m)
+            <input name="precision" type="number" min="0" step="1">
+          </label>
+          <label>Fotografias o codigos de archivo
+            <input name="fotos" placeholder="IMG_001, IMG_002">
+          </label>
+          <label class="wide">Notas
+            <textarea name="notas" rows="3"></textarea>
+          </label>
+          <button type="submit" class="primary">Agregar punto</button>
+        </form>
+        <div class="list" id="obsList"></div>
+      </section>
+
+      <section class="panel" id="macro">
+        <div class="section-head">
+          <h2>Muestreo de macroinvertebrados</h2>
+          <p>Formulario de campo para habitat, esfuerzo, sustrato, conservacion de muestra e identificacion por familia.</p>
+        </div>
+        <form class="grid-form" id="macroForm">
+          <label>Codigo de muestra
+            <input name="codigo" required placeholder="Ej. BMWT-001">
+          </label>
+          <label>Punto asociado
+            <input name="punto" placeholder="Nombre o codigo de punto">
+          </label>
+          <label>Metodo de colecta
+            <select name="metodo">
+              <option>Red D / barrido multihabitat</option>
+              <option>Surber</option>
+              <option>Kick sampling</option>
+              <option>Busqueda manual complementaria</option>
+            </select>
+          </label>
+          <label>Tiempo efectivo de muestreo (min)
+            <input name="tiempo" type="number" min="0" step="0.5">
+          </label>
+          <label>Numero de submuestras
+            <input name="submuestras" type="number" min="1" step="1" value="3">
+          </label>
+          <label>Preservante
+            <select name="preservante">
+              <option>Alcohol 70%</option>
+              <option>Alcohol 95%</option>
+              <option>Otro</option>
+              <option>No preservada</option>
+            </select>
+          </label>
+          <label>Ancho humedo estimado (m)
+            <input name="ancho" type="number" min="0" step="0.01">
+          </label>
+          <label>Profundidad dominante (cm)
+            <input name="profundidad" type="number" min="0" step="1">
+          </label>
+          <label>Velocidad aparente
+            <select name="velocidad">
+              <option>Lenta</option>
+              <option>Moderada</option>
+              <option>Rapida</option>
+              <option>Mixta</option>
+            </select>
+          </label>
+          <label>Habitats muestreados
+            <textarea name="habitats" rows="3" placeholder="Hojarasca, piedra, grava, arena, raices, macrophyta, orillas"></textarea>
+          </label>
+          <label>Sustrato dominante
+            <select name="sustrato">
+              <option>Roca/bloques</option>
+              <option>Cantos</option>
+              <option>Grava</option>
+              <option>Arena</option>
+              <option>Limo/arcilla</option>
+              <option>Materia organica</option>
+              <option>Mixto</option>
+            </select>
+          </label>
+          <label>Ribera y cobertura
+            <textarea name="ribera" rows="3" placeholder="Sombra, bosque ripario, erosion, potreros, cultivos, infraestructura"></textarea>
+          </label>
+          <label>Familias encontradas
+            <textarea name="familias" rows="4" placeholder="Una por linea o separadas por coma. Ej. Baetidae, Perlidae, Hydropsychidae"></textarea>
+          </label>
+          <label>Notas taxonomicas o calidad de muestra
+            <textarea name="notas" rows="3"></textarea>
+          </label>
+          <button type="submit" class="primary">Agregar muestra</button>
+        </form>
+        <div class="score-card" id="bmwpSummary">BMWP-CR preliminar: 0</div>
+        <div class="list" id="macroList"></div>
+      </section>
+
+      <section class="panel" id="caudal">
+        <div class="section-head">
+          <h2>Perfil mojado y caudal</h2>
+          <p>Use verticales de medicion en la seccion transversal. La recomendacion por defecto es 25 verticales para canales naturales.</p>
+        </div>
+        <form class="grid-form" id="sectionForm">
+          <label>Codigo de seccion
+            <input name="codigo" required placeholder="Ej. QJ-SEC-01">
+          </label>
+          <label>Punto asociado
+            <input name="punto" placeholder="Nombre o codigo de punto">
+          </label>
+          <label>Ancho mojado total (m)
+            <input name="anchoTotal" type="number" min="0" step="0.01" required>
+          </label>
+          <label>Verticales recomendadas
+            <input name="verticalesRecomendadas" type="number" min="1" step="1" value="25">
+          </label>
+          <label>Metodo de velocidad
+            <select name="metodoVelocidad">
+              <option>Velocimetro o molinete</option>
+              <option>Flotador superficial con factor de correccion</option>
+              <option>Estimacion preliminar</option>
+            </select>
+          </label>
+          <label>Factor de correccion flotador
+            <input name="factor" type="number" min="0" step="0.01" value="0.85">
+          </label>
+          <label class="wide">Notas de control de seccion
+            <textarea name="notas" rows="3" placeholder="Seccion recta, flujo uniforme, remolinos, turbulencia, obstrucciones, lluvia reciente"></textarea>
+          </label>
+        </form>
+
+        <form class="grid-form compact" id="verticalForm">
+          <label>Distancia desde margen izquierda (m)
+            <input name="distancia" type="number" min="0" step="0.01" required>
+          </label>
+          <label>Profundidad (m)
+            <input name="profundidad" type="number" min="0" step="0.001" required>
+          </label>
+          <label>Velocidad media (m/s)
+            <input name="velocidad" type="number" min="0" step="0.001" required>
+          </label>
+          <label>Observacion
+            <input name="obs" placeholder="Margen, centro, turbulencia, obstaculo">
+          </label>
+          <button type="submit" class="primary">Agregar vertical</button>
+        </form>
+        <div class="score-card" id="flowSummary">Caudal estimado: 0.000 m3/s | 0.00 l/s</div>
+        <div class="list" id="verticalList"></div>
+      </section>
+
+      <section class="panel" id="exportar">
+        <div class="section-head">
+          <h2>Exportar y respaldo</h2>
+          <p>Los datos se guardan localmente en este dispositivo. Exporte al finalizar o antes de cambiar de equipo.</p>
+        </div>
+        <div class="actions">
+          <button class="primary" id="exportJson">Descargar JSON</button>
+          <button id="exportCsv">Descargar CSV resumido</button>
+          <button id="printReport">Imprimir informe</button>
+          <button class="danger" id="clearData">Borrar datos locales</button>
+        </div>
+        <pre id="jsonPreview" class="preview" aria-label="Vista previa JSON"></pre>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

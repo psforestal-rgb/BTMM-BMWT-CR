@@ -1,4 +1,4 @@
-const CACHE_NAME = "btmm-bmwt-cr-v9-map-imagery-cors";
+const CACHE_NAME = "btmm-bmwt-cr-v10-field-records";
 const ASSETS = [
   "./",
   "./index.html",

@@ -76,7 +76,7 @@ function normalizeParticipants(value, useDefault = false) {
 }
 
 function persistDraft() {
-  state.schemaVersion = 4;
+  state.schemaVersion = 5;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   document.getElementById("saveStatus").textContent =
     "Guardado " + new Date().toLocaleTimeString("es-CR");
@@ -86,12 +86,19 @@ function persistDraft() {
   }, null, 2);
 }
 
+const RECORD_SUFFIXES = Object.freeze({
+  observation: "OB",
+  macro: "MI",
+  flow: "PM"
+});
+
 let state = loadState();
 let keyNodeId = "start";
 let keyHistory = [];
 let keyResult = null;
 let keyUnknown = "";
 const photoQueues = new Map();
+const gpsSessions = new Map();
 let mediaDbPromise;
 let fieldMap = null;
 let mapRecordLayer = null;
@@ -109,15 +116,74 @@ function uid(prefix = "rec") {
 
 function emptyState() {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     trip: defaultTrip(),
     closure: {},
     observations: [],
     macroSamples: [],
     identifications: [],
     flowSections: [],
-    activeFlowId: null
+    activeFlowId: null,
+    nextRecordNumber: 1
   };
+}
+
+function formatRecordCode(number, suffix) {
+  return `${String(number).padStart(3, "0")}-${suffix}`;
+}
+
+function recordCodeNumber(code) {
+  const match = String(code || "").match(/^(\d+)-(?:PM|MI|OB)$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function migrateRecordCodes(targetState) {
+  const groups = [
+    { records: targetState.observations, suffix: RECORD_SUFFIXES.observation },
+    { records: targetState.macroSamples, suffix: RECORD_SUFFIXES.macro },
+    { records: targetState.flowSections, suffix: RECORD_SUFFIXES.flow }
+  ];
+  const entries = groups.flatMap((group, groupIndex) =>
+    group.records.map((record, recordIndex) => ({
+      record,
+      suffix: group.suffix,
+      fallbackOrder: groupIndex * 100000 + recordIndex,
+      timestamp: Date.parse(record.createdAt || record.gpsFecha || "") || 0
+    }))
+  );
+  let highest = Math.max(
+    0,
+    Number(targetState.nextRecordNumber || 1) - 1,
+    ...entries.map(({ record }) => recordCodeNumber(record.codigo))
+  );
+  entries
+    .filter(({ record }) => !recordCodeNumber(record.codigo))
+    .sort((left, right) =>
+      (left.timestamp || Number.MAX_SAFE_INTEGER) -
+        (right.timestamp || Number.MAX_SAFE_INTEGER) ||
+      left.fallbackOrder - right.fallbackOrder
+    )
+    .forEach(({ record, suffix }) => {
+      highest += 1;
+      if (record.codigo) record.codigoAnterior = record.codigo;
+      record.codigo = formatRecordCode(highest, suffix);
+    });
+  targetState.nextRecordNumber = Math.max(highest + 1, Number(targetState.nextRecordNumber || 1));
+}
+
+function peekRecordCode(recordType) {
+  return formatRecordCode(
+    Number(state.nextRecordNumber || 1),
+    RECORD_SUFFIXES[recordType]
+  );
+}
+
+function allocateRecordCode(recordType) {
+  const suffix = RECORD_SUFFIXES[recordType];
+  if (!suffix) return "";
+  const number = Number(state.nextRecordNumber || 1);
+  state.nextRecordNumber = number + 1;
+  return formatRecordCode(number, suffix);
 }
 
 function loadState() {
@@ -143,7 +209,7 @@ function loadState() {
   if (!next.closure.horaFinal && rawTrip.horaCierre) {
     next.closure.horaFinal = rawTrip.horaCierre;
   }
-  next.schemaVersion = 4;
+  next.schemaVersion = 5;
   next.observations = Array.isArray(raw.observations) ? raw.observations.map((record) => ({
     ...record, id: record.id || uid("obs"), photoIds: record.photoIds || []
   })) : [];
@@ -170,6 +236,7 @@ function loadState() {
   if (next.activeFlowId && !next.flowSections.some((section) => section.id === next.activeFlowId)) {
     next.activeFlowId = next.flowSections[0]?.id || null;
   }
+  migrateRecordCodes(next);
   return next;
 }
 
@@ -277,10 +344,10 @@ function calculateFlow(section) {
 
 function coordinateRow(record) {
   const crtm = record.este && record.norte
-    ? `CRTM05: E ${Number(record.este).toFixed(2)} · N ${Number(record.norte).toFixed(2)} · ${record.crs || "EPSG:5367"}`
+    ? `CRTM05: E ${Number(record.este).toFixed(2)} · N ${Number(record.norte).toFixed(2)} · Z ${record.altitud || "s/d"} m · ${record.crs || "EPSG:5367"}`
     : "CRTM05: sin coordenadas";
   const wgs = record.lat && record.lon
-    ? `WGS84: ${Number(record.lat).toFixed(7)}, ${Number(record.lon).toFixed(7)} · precisión ${record.precision || "s/d"} m`
+    ? `WGS84: ${Number(record.lat).toFixed(7)}, ${Number(record.lon).toFixed(7)} · X/Y ±${record.incertidumbreX || record.precision || "s/d"} m · Z ±${record.incertidumbreZ || "no informada"}`
     : "WGS84: sin lectura";
   return [crtm, wgs];
 }
@@ -295,24 +362,189 @@ function convertLatLon(form) {
   form.elements.norte.value = north.toFixed(2);
 }
 
+function convertCrtmToLatLon(form) {
+  const east = Number(form.elements.este?.value);
+  const north = Number(form.elements.norte?.value);
+  const crs = form.elements.crs?.value || "EPSG:5367";
+  if (!Number.isFinite(east) || !Number.isFinite(north)) return;
+  const [lon, lat] = proj4(crs, "EPSG:4326", [east, north]);
+  form.elements.lat.value = lat.toFixed(7);
+  form.elements.lon.value = lon.toFixed(7);
+}
+
+function stopGpsCollection(form) {
+  const session = gpsSessions.get(form);
+  if (session?.watchId !== undefined) {
+    navigator.geolocation?.clearWatch(session.watchId);
+  }
+  gpsSessions.delete(form);
+}
+
+function setCoordinateLock(form, locked) {
+  if (!form?.elements.coordLocked) return;
+  form.elements.coordLocked.value = locked ? "si" : "";
+  const card = form.querySelector(".coordinate-card");
+  card?.classList.toggle("coordinates-locked", locked);
+  const lockButton = form.querySelector(".gps-lock-button");
+  if (lockButton) {
+    lockButton.textContent = locked ? "Coordenadas bloqueadas" : "Bloquear coordenadas";
+    lockButton.disabled = locked || !coordinateQualityReady(form);
+  }
+  ["este", "norte", "altitud", "incertidumbreX", "incertidumbreY", "incertidumbreZ", "crs"]
+    .forEach((name) => {
+      if (form.elements[name]) form.elements[name].readOnly = locked;
+    });
+}
+
+function coordinateQualityReady(form) {
+  if (
+    form.elements.coordMode?.value === "gps" &&
+    (gpsSessions.get(form)?.samples.length || 0) < 3
+  ) return false;
+  const required = ["este", "norte", "altitud", "incertidumbreX", "incertidumbreY"];
+  if (!required.every((name) =>
+    form.elements[name]?.value !== "" &&
+    Number.isFinite(Number(form.elements[name].value))
+  )) return false;
+  const x = Number(form.elements.incertidumbreX.value);
+  const y = Number(form.elements.incertidumbreY.value);
+  if (x > 10 || y > 10) return false;
+  const zValue = form.elements.incertidumbreZ?.value;
+  if (form.elements.coordMode?.value === "manual") {
+    return zValue !== "" && Number(zValue) <= 10;
+  }
+  return zValue === "" || Number(zValue) <= 10;
+}
+
+function updateCoordinateLockAvailability(form) {
+  if (!form?.elements.coordLocked || form.elements.coordLocked.value === "si") return;
+  const lockButton = form.querySelector(".gps-lock-button");
+  if (lockButton) lockButton.disabled = !coordinateQualityReady(form);
+}
+
+function weightedAverage(samples, field, accuracyField) {
+  const valid = samples.filter((sample) =>
+    Number.isFinite(sample[field]) &&
+    Number.isFinite(sample[accuracyField]) &&
+    sample[accuracyField] > 0
+  );
+  if (!valid.length) return null;
+  const weightTotal = valid.reduce((sum, sample) =>
+    sum + 1 / (sample[accuracyField] ** 2), 0);
+  return valid.reduce((sum, sample) =>
+    sum + sample[field] / (sample[accuracyField] ** 2), 0) / weightTotal;
+}
+
+function sampleSpread(samples, east, north) {
+  if (!samples.length) return Infinity;
+  const squared = samples.reduce((sum, sample) =>
+    sum + (sample.east - east) ** 2 + (sample.north - north) ** 2, 0);
+  return Math.sqrt(squared / samples.length);
+}
+
+function median(values) {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return Infinity;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function applyAveragedGps(form, samples) {
+  const east = weightedAverage(samples, "east", "accuracy");
+  const north = weightedAverage(samples, "north", "accuracy");
+  if (!Number.isFinite(east) || !Number.isFinite(north)) return null;
+  const lat = weightedAverage(samples, "latitude", "accuracy");
+  const lon = weightedAverage(samples, "longitude", "accuracy");
+  const altitude = weightedAverage(samples, "altitude", "altitudeAccuracy");
+  const representativeAccuracy = median(samples.map((sample) => sample.accuracy));
+  const horizontalSpread = sampleSpread(samples, east, north);
+  const horizontalUncertainty = Math.max(representativeAccuracy, horizontalSpread);
+  const altitudeSamples = samples.filter((sample) =>
+    Number.isFinite(sample.altitude) &&
+    Number.isFinite(sample.altitudeAccuracy) &&
+    sample.altitudeAccuracy > 0
+  );
+  let verticalUncertainty = null;
+  if (altitudeSamples.length && Number.isFinite(altitude)) {
+    const representativeVertical = median(
+      altitudeSamples.map((sample) => sample.altitudeAccuracy)
+    );
+    const verticalSpread = Math.sqrt(
+      altitudeSamples.reduce((sum, sample) =>
+        sum + (sample.altitude - altitude) ** 2, 0) / altitudeSamples.length
+    );
+    verticalUncertainty = Math.max(representativeVertical, verticalSpread);
+  }
+
+  form.elements.este.value = east.toFixed(2);
+  form.elements.norte.value = north.toFixed(2);
+  form.elements.lat.value = Number(lat).toFixed(7);
+  form.elements.lon.value = Number(lon).toFixed(7);
+  form.elements.altitud.value = Number.isFinite(altitude) ? altitude.toFixed(1) :
+    (samples.find((sample) => Number.isFinite(sample.altitude))?.altitude?.toFixed(1) || "");
+  form.elements.precision.value = horizontalUncertainty.toFixed(1);
+  form.elements.incertidumbreX.value = horizontalUncertainty.toFixed(1);
+  form.elements.incertidumbreY.value = horizontalUncertainty.toFixed(1);
+  form.elements.incertidumbreZ.value = verticalUncertainty === null
+    ? ""
+    : verticalUncertainty.toFixed(1);
+  form.elements.gpsFecha.value = new Date(samples.at(-1).timestamp).toISOString();
+  return { horizontalUncertainty, verticalUncertainty };
+}
+
 function captureGps(form, button) {
   const status = form.querySelector(".field-status");
   if (!navigator.geolocation) {
     status.textContent = "Este navegador no ofrece geolocalización.";
     return;
   }
+  stopGpsCollection(form);
+  setCoordinateLock(form, false);
+  form.elements.coordMode.value = "gps";
+  ["este", "norte", "altitud", "incertidumbreX", "incertidumbreY", "incertidumbreZ"]
+    .forEach((name) => {
+      if (form.elements[name]) form.elements[name].readOnly = true;
+    });
   button.disabled = true;
-  status.textContent = "Esperando una lectura GPS precisa…";
-  navigator.geolocation.getCurrentPosition((position) => {
-    const { latitude, longitude, accuracy, altitude } = position.coords;
-    form.elements.lat.value = latitude.toFixed(7);
-    form.elements.lon.value = longitude.toFixed(7);
-    form.elements.precision.value = Number(accuracy).toFixed(1);
-    form.elements.altitud.value = altitude == null ? "" : Number(altitude).toFixed(1);
-    form.elements.gpsFecha.value = new Date(position.timestamp).toISOString();
-    convertLatLon(form);
-    status.textContent = `Lectura capturada con precisión estimada de ${Number(accuracy).toFixed(1)} m.`;
-    button.disabled = false;
+  button.textContent = "Colectando…";
+  status.textContent = "Iniciando colecta GPS de alta precisión…";
+  const session = { samples: [], watchId: undefined };
+  gpsSessions.set(form, session);
+  session.watchId = navigator.geolocation.watchPosition((position) => {
+    const { latitude, longitude, accuracy, altitude, altitudeAccuracy } = position.coords;
+    if (![latitude, longitude, accuracy].every(Number.isFinite)) return;
+    const [east, north] = proj4(
+      "EPSG:4326",
+      form.elements.crs?.value || "EPSG:5367",
+      [longitude, latitude]
+    );
+    session.samples.push({
+      latitude,
+      longitude,
+      accuracy: Math.max(Number(accuracy), 0.1),
+      altitude: altitude == null ? NaN : Number(altitude),
+      altitudeAccuracy: altitudeAccuracy == null ? NaN : Math.max(Number(altitudeAccuracy), 0.1),
+      east,
+      north,
+      timestamp: position.timestamp
+    });
+    if (session.samples.length > 60) session.samples.shift();
+    const quality = applyAveragedGps(form, session.samples);
+    const enoughReadings = session.samples.length >= 3;
+    const ready = enoughReadings && coordinateQualityReady(form);
+    const verticalText = quality?.verticalUncertainty === null
+      ? "Z sin incertidumbre informada por el dispositivo"
+      : `Z ±${quality.verticalUncertainty.toFixed(1)} m`;
+    status.textContent =
+      `${session.samples.length} lecturas promediadas · X/Y ±${quality.horizontalUncertainty.toFixed(1)} m · ${verticalText}. ` +
+      (ready
+        ? "Ya puede bloquear las coordenadas."
+        : (form.elements.altitud.value
+          ? "Continúe inmóvil y con cielo visible."
+          : "El dispositivo todavía no informa la altitud Z."));
+    updateCoordinateLockAvailability(form);
   }, (error) => {
     const messages = {
       1: "Permiso de ubicación denegado.",
@@ -320,12 +552,116 @@ function captureGps(form, button) {
       3: "La lectura GPS agotó el tiempo de espera."
     };
     status.textContent = messages[error.code] || "No fue posible capturar la ubicación.";
+    stopGpsCollection(form);
     button.disabled = false;
+    button.textContent = "Iniciar colecta GPS";
   }, {
     enableHighAccuracy: true,
     timeout: 30000,
     maximumAge: 0
   });
+}
+
+function enhanceCoordinateCard(form) {
+  const card = form.querySelector(".coordinate-card");
+  const grid = card?.querySelector(".coordinate-grid");
+  const title = card?.querySelector(".coordinate-title");
+  if (!card || !grid || !title || form.elements.coordMode) return;
+
+  const modeLabel = document.createElement("label");
+  modeLabel.className = "coordinate-mode";
+  modeLabel.innerHTML = `
+    Forma de captura
+    <select name="coordMode">
+      <option value="manual">Escribir CRTM05 manualmente</option>
+      <option value="gps">Promediar sensores del dispositivo</option>
+    </select>
+  `;
+  grid.prepend(modeLabel);
+
+  const accuracyFields = [
+    ["incertidumbreX", "Incertidumbre X (± m)"],
+    ["incertidumbreY", "Incertidumbre Y (± m)"],
+    ["incertidumbreZ", "Incertidumbre Z (± m)"]
+  ];
+  accuracyFields.forEach(([name, labelText]) => {
+    const label = document.createElement("label");
+    label.textContent = labelText;
+    const input = document.createElement("input");
+    input.name = name;
+    input.type = "number";
+    input.min = "0";
+    input.step = "0.1";
+    input.inputMode = "decimal";
+    label.appendChild(input);
+    grid.appendChild(label);
+  });
+  const lockField = document.createElement("input");
+  lockField.type = "hidden";
+  lockField.name = "coordLocked";
+  card.appendChild(lockField);
+
+  const oldButton = title.querySelector(".gps-button");
+  const actions = document.createElement("div");
+  actions.className = "coordinate-actions";
+  const collectButton = oldButton || document.createElement("button");
+  collectButton.type = "button";
+  collectButton.className = "gps-button";
+  collectButton.textContent = "Iniciar colecta GPS";
+  const lockButton = document.createElement("button");
+  lockButton.type = "button";
+  lockButton.className = "gps-lock-button";
+  lockButton.textContent = "Bloquear coordenadas";
+  lockButton.disabled = true;
+  actions.append(collectButton, lockButton);
+  title.appendChild(actions);
+
+  const setMode = () => {
+    stopGpsCollection(form);
+    setCoordinateLock(form, false);
+    const gpsMode = form.elements.coordMode.value === "gps";
+    collectButton.hidden = !gpsMode;
+    collectButton.disabled = false;
+    collectButton.textContent = "Iniciar colecta GPS";
+    ["este", "norte", "altitud", "incertidumbreX", "incertidumbreY", "incertidumbreZ"]
+      .forEach((name) => {
+        if (form.elements[name]) form.elements[name].readOnly = gpsMode;
+      });
+    card.querySelector(".field-status").textContent = gpsMode
+      ? "Pulse “Iniciar colecta GPS”; el bloqueo se habilita al alcanzar ±10 m en X/Y."
+      : "Digite X, Y y Z en CRTM05, junto con incertidumbres de hasta ±10 m.";
+    updateCoordinateLockAvailability(form);
+  };
+  form.elements.coordMode.addEventListener("change", setMode);
+  ["este", "norte", "altitud", "incertidumbreX", "incertidumbreY", "incertidumbreZ", "crs"]
+    .forEach((name) => {
+      form.elements[name]?.addEventListener("input", () => {
+        if (form.elements.coordMode.value === "manual" && ["este", "norte", "crs"].includes(name)) {
+          convertCrtmToLatLon(form);
+        }
+        setCoordinateLock(form, false);
+        updateCoordinateLockAvailability(form);
+      });
+    });
+  lockButton.addEventListener("click", () => {
+    if (!coordinateQualityReady(form)) return;
+    stopGpsCollection(form);
+    if (form.elements.coordMode.value === "manual") {
+      convertCrtmToLatLon(form);
+      form.elements.precision.value = Math.max(
+        Number(form.elements.incertidumbreX.value),
+        Number(form.elements.incertidumbreY.value)
+      ).toFixed(1);
+      form.elements.gpsFecha.value = new Date().toISOString();
+    }
+    collectButton.disabled = false;
+    collectButton.textContent = "Iniciar nueva colecta";
+    setCoordinateLock(form, true);
+    const status = card.querySelector(".field-status");
+    status.textContent =
+      "Coordenadas bloqueadas para este registro. Para cambiarlas, inicie una nueva colecta o cambie el modo.";
+  });
+  setMode();
 }
 
 function openMediaDb() {
@@ -343,28 +679,136 @@ function openMediaDb() {
   return mediaDbPromise;
 }
 
-async function writePhotos(files, recordType, recordId) {
+async function loadPhotoImage(blob) {
+  if ("createImageBitmap" in window) return createImageBitmap(blob);
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const url = URL.createObjectURL(blob);
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("No se pudo interpretar la fotografía."));
+    };
+    image.src = url;
+  });
+}
+
+function photoCoordinateSnapshot(record) {
+  return {
+    crs: record.crs || "EPSG:5367",
+    este: record.este || "",
+    norte: record.norte || "",
+    altitud: record.altitud || "",
+    lat: record.lat || "",
+    lon: record.lon || "",
+    incertidumbreX: record.incertidumbreX || record.precision || "",
+    incertidumbreY: record.incertidumbreY || record.precision || "",
+    incertidumbreZ: record.incertidumbreZ || ""
+  };
+}
+
+async function watermarkPhoto(file, record) {
+  if (!String(file.type || "").startsWith("image/")) {
+    throw new Error(`${file.name || "El archivo"} no es una imagen compatible.`);
+  }
+  const image = await loadPhotoImage(file);
+  const sourceWidth = image.width || image.naturalWidth;
+  const sourceHeight = image.height || image.naturalHeight;
+  const maxLongEdge = 4096;
+  const scale = Math.min(1, maxLongEdge / Math.max(sourceWidth, sourceHeight));
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("El navegador no permite procesar fotografías.");
+  context.drawImage(image, 0, 0, width, height);
+  image.close?.();
+
+  const takenAt = new Date(file.lastModified || Date.now());
+  const snapshot = photoCoordinateSnapshot(record);
+  const dateTime = takenAt.toLocaleString("es-CR", {
+    dateStyle: "short",
+    timeStyle: "medium",
+    hour12: false
+  });
+  const coordinateText =
+    `E ${snapshot.este || "s/d"} · N ${snapshot.norte || "s/d"} · Z ${snapshot.altitud || "s/d"} m · ${snapshot.crs}`;
+  const lines = [dateTime, coordinateText];
+  const fontSize = Math.max(13, Math.round(width / 115));
+  const padding = Math.max(8, Math.round(fontSize * 0.65));
+  const lineHeight = Math.round(fontSize * 1.28);
+  context.font = `600 ${fontSize}px system-ui, sans-serif`;
+  context.textAlign = "right";
+  context.textBaseline = "bottom";
+  const textWidth = Math.min(
+    width - padding * 4,
+    Math.max(...lines.map((line) => context.measureText(line).width))
+  );
+  const boxWidth = textWidth + padding * 2;
+  const boxHeight = lineHeight * lines.length + padding * 1.5;
+  const boxX = width - boxWidth - padding;
+  const boxY = height - boxHeight - padding;
+  context.fillStyle = "rgba(8, 24, 22, .64)";
+  context.fillRect(boxX, boxY, boxWidth, boxHeight);
+  context.fillStyle = "rgba(255, 255, 255, .94)";
+  lines.forEach((line, index) => {
+    context.fillText(
+      line,
+      width - padding * 2,
+      height - padding * 1.7 - (lines.length - 1 - index) * lineHeight,
+      textWidth
+    );
+  });
+
+  const outputType = file.type === "image/png" ? "image/png" : "image/jpeg";
+  const blob = await canvasToBlob(canvas, outputType, 0.92);
+  return {
+    blob,
+    type: outputType,
+    takenAt: takenAt.toISOString(),
+    coordinateSnapshot: snapshot,
+    watermarked: true,
+    originalName: file.name || ""
+  };
+}
+
+async function writePhotos(files, recordType, recordId, record = {}) {
   if (!files.length) return [];
   const db = await openMediaDb();
-  const transaction = db.transaction(MEDIA_STORE, "readwrite");
-  const store = transaction.objectStore(MEDIA_STORE);
   const ids = [];
-  files.forEach((file) => {
-    const id = uid("photo");
-    ids.push(id);
-    store.put({
-      id,
-      recordType,
-      recordId,
-      name: file.name || `${id}.jpg`,
-      type: file.type || "application/octet-stream",
-      size: file.size,
-      lastModified: file.lastModified || null,
-      createdAt: new Date().toISOString(),
-      blob: file
-    });
-  });
-  await transactionDone(transaction);
+  try {
+    for (const file of files) {
+      const result = await watermarkPhoto(file, record);
+      const transaction = db.transaction(MEDIA_STORE, "readwrite");
+      const store = transaction.objectStore(MEDIA_STORE);
+      const id = uid("photo");
+      ids.push(id);
+      store.put({
+        id,
+        recordType,
+        recordId,
+        name: file.name || `${id}.jpg`,
+        type: result.type,
+        size: result.blob.size,
+        lastModified: file.lastModified || null,
+        createdAt: new Date().toISOString(),
+        takenAt: result.takenAt,
+        coordinateSnapshot: result.coordinateSnapshot,
+        watermarked: result.watermarked,
+        originalName: result.originalName,
+        blob: result.blob
+      });
+      await transactionDone(transaction);
+    }
+  } catch (error) {
+    await Promise.all(ids.map((id) => deletePhoto(id)));
+    throw error;
+  }
   return ids;
 }
 
@@ -435,7 +879,7 @@ async function appendPhotos(recordType, recordId, files) {
   const record = recordForType(recordType, recordId);
   if (!record || !files.length) return;
   try {
-    const ids = await writePhotos(files, recordType, recordId);
+    const ids = await writePhotos(files, recordType, recordId, record);
     record.photoIds = [...(record.photoIds || []), ...ids];
     saveState();
     await updateStorageEstimate();
@@ -468,16 +912,102 @@ function resetQueue(form) {
   updateQueueStatus(form);
 }
 
+function attachPhotoInput(input, form) {
+  input.addEventListener("change", () => {
+    queueFiles(form, [...input.files]);
+    input.value = "";
+  });
+}
+
+function preparePhotoControls() {
+  document.querySelectorAll(".photo-field").forEach((field, index) => {
+    if (field.querySelector(".photo-source-actions")) return;
+    const form = field.closest("form");
+    const galleryInput = field.querySelector(".photo-input");
+    if (!form || !galleryInput) return;
+    galleryInput.hidden = true;
+    galleryInput.removeAttribute("capture");
+    const cameraInput = document.createElement("input");
+    cameraInput.type = "file";
+    cameraInput.accept = "image/*";
+    cameraInput.capture = "environment";
+    cameraInput.hidden = true;
+    cameraInput.className = "camera-input";
+    cameraInput.id = `cameraInput${index + 1}`;
+    const actions = document.createElement("span");
+    actions.className = "photo-source-actions";
+    const galleryButton = document.createElement("button");
+    galleryButton.type = "button";
+    galleryButton.textContent = "Elegir del dispositivo";
+    galleryButton.addEventListener("click", () => galleryInput.click());
+    const cameraButton = document.createElement("button");
+    cameraButton.type = "button";
+    cameraButton.textContent = "Abrir cámara";
+    cameraButton.addEventListener("click", () => cameraInput.click());
+    actions.append(galleryButton, cameraButton);
+    field.insertBefore(actions, galleryInput);
+    field.appendChild(cameraInput);
+    attachPhotoInput(cameraInput, form);
+  });
+}
+
+function prepareRecordForm(form, recordType) {
+  if (!form || !RECORD_SUFFIXES[recordType]) return;
+  if (form.elements.codigo) form.elements.codigo.value = peekRecordCode(recordType);
+  if (form.elements.horaInicio && !form.elements.horaInicio.value) {
+    form.elements.horaInicio.value = localTimeValue();
+  }
+  if (form.elements.coordMode && form.elements.coordLocked?.value !== "si") {
+    form.elements.coordMode.value = "manual";
+    form.elements.coordMode.dispatchEvent(new Event("change"));
+  }
+}
+
+function createRecordPhotoButton(label, capture, action) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.addEventListener("click", () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = !capture;
+    if (capture) input.capture = "environment";
+    input.addEventListener("change", () => action([...input.files]));
+    input.click();
+  });
+  return button;
+}
+
 async function addRecordFromForm(form, collection, recordType, prefix, additions = {}) {
-  const record = { ...formToObject(form), ...additions, id: uid(prefix), photoIds: [] };
+  const isPointRecord = Boolean(RECORD_SUFFIXES[recordType]);
+  if (isPointRecord && form.elements.coordLocked?.value !== "si") {
+    alert("Bloquee primero las coordenadas con incertidumbre de hasta ±10 m.");
+    return null;
+  }
+  const record = {
+    ...formToObject(form),
+    ...additions,
+    id: uid(prefix),
+    createdAt: new Date().toISOString(),
+    photoIds: []
+  };
+  if (isPointRecord) record.codigo = allocateRecordCode(recordType);
   collection.push(record);
+  persistDraft();
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
   const files = photoQueues.get(getQueueKey(form)) || [];
   try {
-    record.photoIds = await writePhotos(files, recordType, record.id);
+    record.photoIds = await writePhotos(files, recordType, record.id, record);
   } catch (error) {
     alert(`El punto se guardó, pero no todas las fotografías. ${error.message}`);
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
   form.reset();
+  stopGpsCollection(form);
+  setCoordinateLock(form, false);
   resetQueue(form);
   saveState();
   await updateStorageEstimate();
@@ -506,18 +1036,13 @@ function makeItem(record, title, rows, recordType, onDelete, extraActions = []) 
     button.addEventListener("click", action);
     actions.appendChild(button);
   });
-  const photoButton = document.createElement("button");
-  photoButton.type = "button";
-  photoButton.textContent = "Añadir fotografías";
-  photoButton.addEventListener("click", () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.multiple = true;
-    input.addEventListener("change", () => appendPhotos(recordType, record.id, [...input.files]));
-    input.click();
-  });
-  actions.appendChild(photoButton);
+  if (recordType !== "none") {
+    const addSelectedPhotos = (files) => appendPhotos(recordType, record.id, files);
+    actions.appendChild(
+      createRecordPhotoButton("Elegir fotografías", false, addSelectedPhotos),
+      createRecordPhotoButton("Abrir cámara", true, addSelectedPhotos)
+    );
+  }
   const deleteButton = document.createElement("button");
   deleteButton.type = "button";
   deleteButton.textContent = "Eliminar";
@@ -803,10 +1328,10 @@ function render() {
   const obsList = document.getElementById("obsList");
   obsList.innerHTML = "";
   state.observations.forEach((record, index) => {
-    obsList.appendChild(makeItem(record, record.nombre || `Punto ${index + 1}`, [
-      record.tipo || "Observación general",
+    obsList.appendChild(makeItem(record, record.codigo || `Observación ${index + 1}`, [
+      `${record.tipo || "Observación"} · inicio ${record.horaInicio || "s/d"}`,
       ...coordinateRow(record),
-      record.notas || ""
+      record.detalle || record.notas || ""
     ], "observation", () => removeRecord(state.observations, index)));
   });
 
@@ -815,6 +1340,7 @@ function render() {
   state.macroSamples.forEach((record, index) => {
     const result = bmwpScoreForSample(record);
     macroList.appendChild(makeItem(record, record.codigo || `Muestra ${index + 1}`, [
+      `Hora de inicio: ${record.horaInicio || "s/d"}`,
       ...coordinateRow(record),
       `${record.metodo || ""} · ${record.tiempo || "0"} min · ${record.submuestras || "0"} submuestras`,
       `Hábitats: ${record.habitats || "sin dato"}`,
@@ -848,6 +1374,7 @@ function render() {
   state.flowSections.forEach((section, index) => {
     const flow = calculateFlow(section);
     sectionList.appendChild(makeItem(section, section.codigo || `Sección ${index + 1}`, [
+      `Hora de inicio: ${section.horaInicio || "s/d"}`,
       ...coordinateRow(section),
       `Ancho: ${section.anchoTotal || "s/d"} m · ${section.verticals.length} verticales`,
       `Caudal: ${flow.cubic.toFixed(4)} m³/s · ${flow.liters.toFixed(2)} L/s`
@@ -910,47 +1437,58 @@ function csvEscape(value) {
 
 function buildCsv() {
   const rows = [[
-    "tipo", "codigo", "punto", "crs", "este", "norte", "lat_wgs84", "lon_wgs84",
-    "precision_m", "altitud_m", "fecha_gps", "detalle"
+    "tipo", "codigo", "punto", "hora_inicio", "crs", "este", "norte", "altitud_m",
+    "incertidumbre_x_m", "incertidumbre_y_m", "incertidumbre_z_m",
+    "lat_wgs84", "lon_wgs84", "fecha_gps", "detalle"
   ]];
   rows.push([
-    "gira_inicio", state.trip.expediente || "", state.trip.cuerpoAgua || "", "", "", "", "", "", "", "", "",
+    "gira_inicio", state.trip.expediente || "", state.trip.cuerpoAgua || "",
+    state.trip.horaInicio || "", "", "", "", "", "", "", "", "", "", "",
     "fecha=" + (state.trip.fecha || "") + "; hora_inicio=" + (state.trip.horaInicio || "") +
       "; area_silvestre=" + (state.trip.areaSilvestre || "") +
       "; meteorologia_inicial=" + (state.trip.meteoInicial || "") +
       "; observaciones=" + (state.trip.observaciones || "")
   ]);
   (state.trip.participantes || []).forEach((participant) => rows.push([
-    "participante", participant.nombre || "", participant.representada || "", "", "", "", "", "", "", "", "", ""
+    "participante", participant.nombre || "", participant.representada || "",
+    "", "", "", "", "", "", "", "", "", "", "", ""
   ]));
   rows.push([
-    "gira_cierre", "", "", "", "", "", "", "", "", "", "",
+    "gira_cierre", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
     "hora_final=" + (state.closure.horaFinal || "") +
       "; meteorologia_final=" + (state.closure.meteoFinal || "") +
       "; observaciones_finales=" + (state.closure.observacionesFinales || "")
   ]);
   state.observations.forEach((record) => rows.push([
-    "observacion", record.nombre, record.tipo, record.crs, record.este, record.norte,
-    record.lat, record.lon, record.precision, record.altitud, record.gpsFecha, record.notas
+    "observacion", record.codigo, record.tipo, record.horaInicio, record.crs,
+    record.este, record.norte, record.altitud,
+    record.incertidumbreX, record.incertidumbreY, record.incertidumbreZ,
+    record.lat, record.lon, record.gpsFecha, record.detalle || record.notas
   ]));
   state.macroSamples.forEach((record) => rows.push([
-    "macroinvertebrados", record.codigo, record.punto, record.crs, record.este, record.norte,
-    record.lat, record.lon, record.precision, record.altitud, record.gpsFecha, record.familias
+    "macroinvertebrados", record.codigo, record.punto, record.horaInicio, record.crs,
+    record.este, record.norte, record.altitud,
+    record.incertidumbreX, record.incertidumbreY, record.incertidumbreZ,
+    record.lat, record.lon, record.gpsFecha, record.familias
   ]));
   state.flowSections.forEach((section) => {
     const flow = calculateFlow(section);
     rows.push([
-      "perfil_caudal", section.codigo, section.punto, section.crs, section.este, section.norte,
-      section.lat, section.lon, section.precision, section.altitud, section.gpsFecha,
+      "perfil_caudal", section.codigo, section.punto, section.horaInicio, section.crs,
+      section.este, section.norte, section.altitud,
+      section.incertidumbreX, section.incertidumbreY, section.incertidumbreZ,
+      section.lat, section.lon, section.gpsFecha,
       `ancho=${section.anchoTotal}; verticales=${section.verticals.length}; caudal_m3s=${flow.cubic}`
     ]);
     section.verticals.forEach((vertical, index) => rows.push([
-      "vertical_caudal", `V${index + 1}`, section.codigo, "", "", "", "", "", "", "", "",
+      "vertical_caudal", `V${index + 1}`, section.codigo,
+      "", "", "", "", "", "", "", "", "", "", "",
       `distancia_m=${vertical.distancia}; profundidad_m=${vertical.profundidad}; velocidad_ms=${vertical.velocidad}; nota=${vertical.obs || ""}`
     ]));
   });
   state.identifications.forEach((record) => rows.push([
-    "identificacion", record.codigo, record.punto, "", "", "", "", "", "", "", "",
+    "identificacion", record.codigo, record.punto,
+    "", "", "", "", "", "", "", "", "", "", "",
     record.taxon
       ? `taxon=${record.taxon}; rango=${record.rango || ""}; puntaje=${record.puntaje || ""}; ruta=${record.rutaClave || ""}`
       : (record.candidates || []).join("; ")
@@ -987,12 +1525,24 @@ async function exportZip() {
     zip.file("datos/BTMM-BMWT-CR.json", JSON.stringify({ ...state, exportedAt: timestamp }, null, 2));
     zip.file("datos/BTMM-BMWT-CR.csv", buildCsv());
     const photos = await getAllPhotos();
-    const manifest = [["photo_id", "tipo_registro", "id_registro", "nombre", "tipo_mime", "bytes", "fecha"]];
+    const manifest = [[
+      "photo_id", "tipo_registro", "id_registro", "nombre", "tipo_mime", "bytes",
+      "fecha_guardado", "fecha_fotografia", "marca_agua", "crs", "este", "norte",
+      "altitud", "lat_wgs84", "lon_wgs84", "incertidumbre_x", "incertidumbre_y",
+      "incertidumbre_z"
+    ]];
     photos.forEach((photo, index) => {
       const filename = `${String(index + 1).padStart(4, "0")}_${safeFilename(photo.name)}`;
       zip.file(`fotografias/${safeFilename(photo.recordType)}/${safeFilename(photo.recordId)}/${filename}`, photo.blob);
       manifest.push([
-        photo.id, photo.recordType, photo.recordId, photo.name, photo.type, photo.size, photo.createdAt
+        photo.id, photo.recordType, photo.recordId, photo.name, photo.type, photo.size,
+        photo.createdAt, photo.takenAt || "", photo.watermarked ? "sí" : "no",
+        photo.coordinateSnapshot?.crs || "", photo.coordinateSnapshot?.este || "",
+        photo.coordinateSnapshot?.norte || "", photo.coordinateSnapshot?.altitud || "",
+        photo.coordinateSnapshot?.lat || "", photo.coordinateSnapshot?.lon || "",
+        photo.coordinateSnapshot?.incertidumbreX || "",
+        photo.coordinateSnapshot?.incertidumbreY || "",
+        photo.coordinateSnapshot?.incertidumbreZ || ""
       ]);
     });
     zip.file("datos/manifiesto_fotografias.csv",
@@ -1060,6 +1610,9 @@ function setTripLocked(locked) {
 }
 
 function prepareFieldWorkflow() {
+  document.querySelectorAll(".point-form").forEach(enhanceCoordinateCard);
+  preparePhotoControls();
+
   const macroPanel = document.getElementById("macro");
   const keyPanel = document.getElementById("identificar");
   if (macroPanel && keyPanel && keyPanel.parentElement !== macroPanel) {
@@ -1103,7 +1656,7 @@ function prepareFieldWorkflow() {
     }
   }
 
-  ["macro", "caudal", "cierre", "exportar"].forEach((panelId) => {
+  ["observaciones", "macro", "caudal", "cierre", "exportar"].forEach((panelId) => {
     const panel = document.getElementById(panelId);
     if (!panel) return;
     panel.classList.add("record-sheet");
@@ -1122,6 +1675,9 @@ function prepareFieldWorkflow() {
       panel.prepend(header);
     }
   });
+  prepareRecordForm(document.getElementById("obsForm"), "observation");
+  prepareRecordForm(document.getElementById("macroForm"), "macro");
+  prepareRecordForm(document.getElementById("sectionForm"), "flow");
   updateTripLockUI();
 }
 
@@ -1143,6 +1699,14 @@ function closeRecordMenu() {
 
 function openRecordSheet(panelId) {
   closeRecordMenu();
+  const recordTypes = {
+    observaciones: "observation",
+    macro: "macro",
+    caudal: "flow"
+  };
+  if (recordTypes[panelId]) {
+    prepareRecordForm(document.getElementById(panelId)?.querySelector(".point-form"), recordTypes[panelId]);
+  }
   activatePanel(panelId, { scroll: false });
   document.body.classList.add("sheet-open");
   requestAnimationFrame(() => {
@@ -1151,6 +1715,16 @@ function openRecordSheet(panelId) {
 }
 
 function closeRecordSheet() {
+  document.querySelectorAll(".point-form").forEach((form) => {
+    if (gpsSessions.has(form)) {
+      stopGpsCollection(form);
+      const button = form.querySelector(".gps-button");
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Reanudar colecta GPS";
+      }
+    }
+  });
   document.body.classList.remove("sheet-open");
   activatePanel("mapa", { scroll: false });
 }
@@ -1171,7 +1745,7 @@ function recordLatLng(record) {
 }
 
 function mapIcon(kind) {
-  const labels = { macro: "M", flow: "C", reference: "R" };
+  const labels = { macro: "MI", flow: "PM", reference: "OB" };
   return L.divIcon({
     className: "field-map-div-icon",
     html: '<span class="map-pin map-pin--' + kind + '"><b>' + labels[kind] + "</b></span>",
@@ -1187,7 +1761,7 @@ function renderMapRecords() {
   const groups = [
     { kind: "macro", records: state.macroSamples, title: (r, i) => r.codigo || r.punto || "Muestra " + (i + 1) },
     { kind: "flow", records: state.flowSections, title: (r, i) => r.codigo || r.punto || "Caudal " + (i + 1) },
-    { kind: "reference", records: state.observations, title: (r, i) => r.nombre || "Referencia " + (i + 1) }
+    { kind: "reference", records: state.observations, title: (r, i) => r.codigo || "Observación " + (i + 1) }
   ];
   let count = 0;
   groups.forEach((group) => {
@@ -1200,7 +1774,7 @@ function renderMapRecords() {
       marker.bindPopup(
         "<strong>" + escapeHtml(group.title(record, index)) + "</strong><br>" +
         escapeHtml(crtm) + "<br>" +
-        escapeHtml(group.kind === "flow" ? "Registro de caudal" : group.kind === "macro" ? "Muestreo de macroinvertebrados" : (record.tipo || "Referencia"))
+        escapeHtml(group.kind === "flow" ? "Perfil mojado y caudal" : group.kind === "macro" ? "Muestreo de macroinvertebrados" : (record.tipo || "Observación"))
       );
       marker.addTo(mapRecordLayer);
     });
@@ -1448,12 +2022,12 @@ async function imageBitmapFromResponse(response) {
   });
 }
 
-function canvasToBlob(canvas, type = "image/png") {
+function canvasToBlob(canvas, type = "image/png", quality) {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
       else reject(new Error("El navegador no pudo crear la imagen PNG."));
-    }, type);
+    }, type, quality);
   });
 }
 
@@ -1650,7 +2224,7 @@ function activatePanel(panelId, options = {}) {
   const panel = document.getElementById(panelId);
   const tab = document.querySelector(`.tab[data-panel="${panelId}"]`);
   if (!panel) return;
-  const sheetIds = ["macro", "caudal", "cierre", "exportar"];
+  const sheetIds = ["observaciones", "macro", "caudal", "cierre", "exportar"];
   const isRecordSheet = sheetIds.includes(panelId);
 
   document.querySelectorAll(".tab").forEach((item) => {
@@ -1768,13 +2342,18 @@ document.getElementById("setEndTime").addEventListener("click", () => {
 
 document.getElementById("obsForm").addEventListener("submit", async (event) => {
   event.preventDefault();
-  await addRecordFromForm(event.currentTarget, state.observations, "observation", "obs");
+  const record = await addRecordFromForm(
+    event.currentTarget, state.observations, "observation", "obs"
+  );
+  if (record) closeRecordSheet();
 });
 
 document.getElementById("macroForm").addEventListener("submit", async (event) => {
   event.preventDefault();
-  await addRecordFromForm(event.currentTarget, state.macroSamples, "macro", "macro");
-  closeRecordSheet();
+  const record = await addRecordFromForm(
+    event.currentTarget, state.macroSamples, "macro", "macro"
+  );
+  if (record) closeRecordSheet();
 });
 
 document.getElementById("sectionForm").addEventListener("submit", async (event) => {
@@ -1782,8 +2361,10 @@ document.getElementById("sectionForm").addEventListener("submit", async (event) 
   const section = await addRecordFromForm(
     event.currentTarget, state.flowSections, "flow", "flow", { verticals: [] }
   );
+  if (!section) return;
   state.activeFlowId = section.id;
   saveState();
+  prepareRecordForm(event.currentTarget, "flow");
 });
 
 document.getElementById("verticalForm").addEventListener("submit", (event) => {
@@ -2008,7 +2589,7 @@ void updateStorageEstimate();
 
 let requestedPanel = location.hash.slice(1) || sessionStorage.getItem("btmm-active-panel");
 if (requestedPanel === "identificar") requestedPanel = "macro";
-const workflowPanels = ["gira", "mapa", "macro", "caudal", "cierre", "exportar"];
+const workflowPanels = ["gira", "mapa", "observaciones", "macro", "caudal", "cierre", "exportar"];
 if (!workflowPanels.includes(requestedPanel)) requestedPanel = "";
 if (!requestedPanel || (requestedPanel !== "gira" && !state.trip.locked)) {
   requestedPanel = state.trip.locked ? "mapa" : "gira";

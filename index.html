@@ -157,7 +157,7 @@
             <span><i class="legend-dot current"></i>Ubicación actual</span>
             <span><i class="legend-dot macro"></i>Macroinvertebrados</span>
             <span><i class="legend-dot flow"></i>Caudal</span>
-            <span><i class="legend-dot reference"></i>Referencia</span>
+            <span><i class="legend-dot reference"></i>Observación</span>
             <strong id="mapPointCount">0 puntos</strong>
           </div>
           <button type="button" id="mapAddRecord" class="map-fab" aria-label="Agregar registro">+</button>
@@ -173,6 +173,7 @@
               <div class="record-menu-options">
                 <button type="button" data-open-record="caudal"><strong>Caudal</strong><span>Perfil mojado, verticales y velocidad</span></button>
                 <button type="button" data-open-record="macro"><strong>Macroinvertebrados</strong><span>Muestra, fotografías y clave dicotómica</span></button>
+                <button type="button" data-open-record="observaciones"><strong>Observaciones</strong><span>Ecosistema, hidrogeología, especies e impactos</span></button>
                 <button type="button" data-open-record="cierre"><strong>Cierre de gira</strong><span>Hora final, meteorología y observaciones</span></button>
               </div>
             </div>
@@ -182,19 +183,24 @@
 
       <section class="panel" id="observaciones">
         <div class="section-head">
-          <h2>Puntos de observación</h2>
-          <p>Cada punto conserva CRTM05, WGS84, precisión, fecha de captura, fotografías y notas.</p>
+          <h2>Observaciones</h2>
+          <p>Registre referencias ambientales con coordenadas CRTM05, fotografías y detalle.</p>
         </div>
         <form class="grid-form point-form" id="obsForm" data-photo-queue="obs">
-          <label>Nombre del punto
-            <input name="nombre" required placeholder="Ej. Puente, toma, remanso o rápida">
+          <label>Código de registro
+            <input name="codigo" class="record-code" readonly aria-label="Código consecutivo de observación">
           </label>
-          <label>Tipo
-            <select name="tipo">
-              <option>Observación general</option>
-              <option>Impacto o amenaza</option>
-              <option>Acceso</option>
-              <option>Referencia</option>
+          <label>Hora de inicio
+            <input name="horaInicio" type="time" readonly>
+          </label>
+          <label class="wide">Tipo de observación
+            <select name="tipo" required>
+              <option value="">Seleccione</option>
+              <option>Ecosistema</option>
+              <option>Formación hidrogeológica</option>
+              <option>Especie indicadora</option>
+              <option>Impacto ambiental</option>
+              <option>Otro</option>
             </select>
           </label>
           <div class="wide coordinate-card">
@@ -241,10 +247,10 @@
             <span class="help">Puede seleccionar o tomar fotografías varias veces; la app no fija un máximo.</span>
             <span class="photo-queue-status">0 fotografías preparadas</span>
           </label>
-          <label class="wide">Notas
-            <textarea name="notas" rows="3"></textarea>
+          <label class="wide">Detalle
+            <textarea name="detalle" rows="4" required placeholder="Describa la observación con el detalle necesario"></textarea>
           </label>
-          <button type="submit" class="primary">Agregar punto</button>
+          <button type="submit" class="primary">Guardar observación</button>
         </form>
         <div class="list" id="obsList"></div>
       </section>
@@ -255,8 +261,11 @@
           <p>Registro del sitio, esfuerzo, hábitat, conservación, taxones y evidencia fotográfica.</p>
         </div>
         <form class="grid-form point-form" id="macroForm" data-photo-queue="macro">
-          <label>Código de muestra
-            <input name="codigo" required placeholder="Ej. BMWT-001">
+          <label>Código de registro
+            <input name="codigo" class="record-code" readonly aria-label="Código consecutivo de macroinvertebrados">
+          </label>
+          <label>Hora de inicio
+            <input name="horaInicio" type="time" readonly>
           </label>
           <label>Nombre del punto
             <input name="punto" placeholder="Nombre o código de campo">
@@ -422,8 +431,11 @@
           <p>Cada sección conserva sus coordenadas, fotografías, verticales y resultado de caudal.</p>
         </div>
         <form class="grid-form point-form" id="sectionForm" data-photo-queue="flow">
-          <label>Código de sección
-            <input name="codigo" required placeholder="Ej. QJ-SEC-01">
+          <label>Código de registro
+            <input name="codigo" class="record-code" readonly aria-label="Código consecutivo de perfil mojado">
+          </label>
+          <label>Hora de inicio
+            <input name="horaInicio" type="time" readonly>
           </label>
           <label>Nombre del punto
             <input name="punto" placeholder="Nombre o código de campo">

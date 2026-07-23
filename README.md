@@ -13,19 +13,35 @@ grandes se adapta a una distribución de dos columnas.
 - Flujo secuencial de campo: datos preliminares, bloqueo contra edición accidental y continuación al mapa operativo.
 - Mapa mobile-first con Esri World Imagery, ubicación GPS actual, círculo de precisión, zoom y puntos guardados de macroinvertebrados, caudal y referencias.
 - Descarga de la extensión aérea visible en un ZIP con PNG, PGW, PRJ, GeoJSON y metadatos; la imagen queda georreferenciada en EPSG:3857 y conserva la atribución de Esri World Imagery.
-- Botón flotante (+) con tres alternativas: Caudal, Macroinvertebrados y Cierre de gira.
+- Botón flotante (+) con cuatro alternativas: Caudal, Macroinvertebrados,
+  Observaciones y Cierre de gira.
 - Los formularios se abren como hojas de trabajo sobre el mapa; la clave dicotómica forma parte del módulo Macroinvertebrados.
 - Las teselas de imagen ya visitadas se conservan en caché cuando el navegador y el espacio disponible lo permiten; la cobertura aérea completa requiere conexión.
 - El botón **Continuar** bloquea automáticamente los datos preliminares si aún no se pulsó **Bloquear edición**, de modo que el flujo no queda detenido en un botón deshabilitado.
 - Inicio de gira con expediente, fecha y hora automáticas, participantes estructurados, área silvestre protegida, cuerpo de agua, condición meteorológica inicial y observaciones.
 - Cierre separado con hora final, condiciones meteorológicas imperantes y observaciones finales.
-- Coordenadas en todos los puntos de observación, macroinvertebrados y perfil:
-  conserva la lectura WGS84 del GPS y calcula CRTM05.
+- Consecutivo único compartido por toda la gira. El orden de guardado genera
+  códigos como `001-PM`, `002-MI`, `003-OB`, sin reservar números al cancelar
+  formularios ni reutilizarlos después de eliminar un registro.
+- Formulario de Observaciones (`OB`) para Ecosistema, Formación hidrogeológica,
+  Especie indicadora, Impacto ambiental u Otro, con detalle, hora, coordenadas
+  y fotografías.
+- Hora de inicio automática en todos los registros PM, MI y OB.
+- Coordenadas comunes en todos los puntos de observación, macroinvertebrados y
+  perfil mojado/caudal:
+  - Digitación manual de X, Y y Z en CRTM05 con incertidumbre declarada.
+  - Colecta de múltiples lecturas del dispositivo, promedio ponderado y
+    bloqueo cuando X/Y alcanzan una incertidumbre de hasta ±10 m.
+  - Conservación de WGS84, CRTM05, altitud, incertidumbres X/Y/Z y fecha/hora.
 - Selector entre `CR05 / CRTM05 (EPSG:5367)` y
   `CR-SIRGAS / CRTM05 (EPSG:8908)`.
-- Fotografías sin límite fijado por la aplicación, almacenadas como archivos
-  binarios offline en IndexedDB. El límite real es el espacio que el navegador
-  conceda al dispositivo.
+- Fotografías desde archivos del dispositivo o directamente desde la cámara,
+  sin límite fijado por la aplicación y almacenadas como archivos binarios
+  offline en IndexedDB. El límite real es el espacio que el navegador conceda.
+- Cada fotografía se guarda con fecha/hora y una copia de las coordenadas del
+  registro; la imagen lleva una marca de agua discreta en la esquina inferior
+  derecha con fecha, hora, X, Y, Z y sistema de referencia. El manifiesto del
+  respaldo conserva también esos metadatos.
 - Muestreo de macroinvertebrados con método, esfuerzo, hábitats, sustrato,
   ribera, preservante, familias y cálculo preliminar BMWP-CR por muestra.
 - Clave dicotómica offline y progresiva: presenta solamente dos alternativas
@@ -48,11 +64,16 @@ persistente. Se recomienda descargar un ZIP al finalizar cada gira.
 
 ## Coordenadas
 
-El dispositivo entrega coordenadas geográficas WGS84. La aplicación conserva la
-lectura original, precisión, altitud y fecha, y ejecuta localmente la proyección
-Transversa de Mercator de CRTM05. Para trabajos geodésicos o catastrales se debe
-aplicar la transformación oficial y el control correspondiente; una lectura de
-teléfono no sustituye levantamiento topográfico.
+El dispositivo entrega coordenadas geográficas WGS84. Durante la colecta, la
+aplicación promedia hasta 60 lecturas ponderadas por la precisión informada por
+el navegador, calcula su dispersión, conserva la lectura original y ejecuta
+localmente la proyección Transversa de Mercator de CRTM05. El bloqueo automático
+requiere al menos tres lecturas y una incertidumbre horizontal estimada de hasta
+±10 m. La incertidumbre vertical se guarda cuando el dispositivo la proporciona;
+la aplicación no afirma una precisión Z que el teléfono no haya reportado.
+Para trabajos geodésicos o catastrales se debe aplicar la transformación oficial
+y el control correspondiente; una lectura de teléfono no sustituye un
+levantamiento topográfico.
 
 SNIT documenta que `EPSG:5367` corresponde a CR05/CRTM05 y que
 `EPSG:8908` corresponde a CR-SIRGAS/CRTM05, sistema que reemplaza al anterior

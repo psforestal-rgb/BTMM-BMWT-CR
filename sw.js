@@ -1,4 +1,4 @@
-const CACHE_NAME = "btmm-bmwt-cr-v7-map-workflow";
+const CACHE_NAME = "btmm-bmwt-cr-v8-map-imagery-export";
 const ASSETS = [
   "./",
   "./index.html",

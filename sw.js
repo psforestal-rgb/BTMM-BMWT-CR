@@ -1,4 +1,4 @@
-const CACHE_NAME = "btmm-bmwt-cr-v5-dichotomous-key";
+const CACHE_NAME = "btmm-bmwt-cr-v6-trip-workflow";
 const ASSETS = [
   "./",
   "./index.html",

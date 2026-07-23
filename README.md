@@ -3,6 +3,11 @@
 PWA offline-first para registrar giras de campo, puntos de observación, muestreos
 de macroinvertebrados acuáticos, identificación asistida, perfil mojado y caudal.
 
+La interfaz es **mobile-first**: está diseñada primero para captura con smartphone
+en campo, con navegación inferior fija, controles táctiles amplios, formularios
+de una columna y accesos rápidos a los tipos principales de registro. En pantallas
+grandes se adapta a una distribución de dos columnas.
+
 ## Funciones
 
 - Datos preliminares de gira: expediente, fecha, participantes, sector, cuerpo de

@@ -100,6 +100,7 @@ let currentAccuracyCircle = null;
 let currentLatLng = null;
 let locationWatchId = null;
 let mapCenteredOnFirstFix = false;
+let imageryLayer = null;
 
 function uid(prefix = "rec") {
   if (crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
@@ -1040,11 +1041,14 @@ function updateTripLockUI() {
   const continueButton = document.getElementById("continueToMap");
   const status = document.getElementById("tripLockStatus");
   if (lockButton) lockButton.textContent = locked ? "Desbloquear edición" : "Bloquear edición";
-  if (continueButton) continueButton.disabled = !locked;
+  if (continueButton) {
+    continueButton.disabled = false;
+    continueButton.textContent = locked ? "Continuar al mapa" : "Continuar y bloquear";
+  }
   if (status) {
     status.textContent = locked
       ? "Edición bloqueada. Puede continuar al mapa."
-      : "Revise los datos y bloquee la edición antes de continuar.";
+      : "Puede bloquear los datos para revisarlos; al continuar se bloquearán automáticamente.";
     status.classList.toggle("locked", locked);
   }
 }
@@ -1296,22 +1300,338 @@ function initFieldMap() {
     attributionControl: true,
     preferCanvas: true
   }).setView([9.65, -83.85], 10);
-  const imagery = L.tileLayer(
+  imageryLayer = L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     {
       maxZoom: 20,
+      crossOrigin: true,
       attribution: "Imagery © Esri, Maxar, Earthstar Geographics and contributors"
     }
   );
-  imagery.on("tileerror", () => {
+  imageryLayer.on("tileerror", () => {
     const status = document.getElementById("mapGpsStatus");
     if (status && !navigator.onLine) status.textContent = "Sin conexión · se muestran las imágenes ya visitadas";
   });
-  imagery.addTo(fieldMap);
+  imageryLayer.addTo(fieldMap);
   L.control.scale({ imperial: false, position: "bottomleft" }).addTo(fieldMap);
   mapRecordLayer = L.layerGroup().addTo(fieldMap);
   renderMapRecords();
   startLocationWatch();
+}
+
+const WEB_MERCATOR_RADIUS = 6378137;
+const WEB_MERCATOR_MAX_LAT = 85.05112878;
+const IMAGERY_TILE_SIZE = 256;
+const IMAGERY_MAX_ZOOM = 20;
+const IMAGERY_TARGET_LONG_EDGE = 2048;
+const IMAGERY_MAX_LONG_EDGE = 4096;
+const IMAGERY_MAX_TILES = 96;
+
+function clampMercatorLatitude(latitude) {
+  return Math.max(-WEB_MERCATOR_MAX_LAT, Math.min(WEB_MERCATOR_MAX_LAT, Number(latitude)));
+}
+
+function slippyPixel(latitude, longitude, zoom) {
+  const lat = clampMercatorLatitude(latitude) * Math.PI / 180;
+  const worldSize = IMAGERY_TILE_SIZE * (2 ** zoom);
+  return {
+    x: ((Number(longitude) + 180) / 360) * worldSize,
+    y: (0.5 - Math.log((1 + Math.sin(lat)) / (1 - Math.sin(lat))) / (4 * Math.PI)) * worldSize
+  };
+}
+
+function webMercator(latitude, longitude) {
+  const lat = clampMercatorLatitude(latitude) * Math.PI / 180;
+  return {
+    x: WEB_MERCATOR_RADIUS * Number(longitude) * Math.PI / 180,
+    y: WEB_MERCATOR_RADIUS * Math.log(Math.tan(Math.PI / 4 + lat / 2))
+  };
+}
+
+function inverseWebMercator(x, y) {
+  return {
+    longitude: Number(x) / WEB_MERCATOR_RADIUS * 180 / Math.PI,
+    latitude: (2 * Math.atan(Math.exp(Number(y) / WEB_MERCATOR_RADIUS)) - Math.PI / 2) * 180 / Math.PI
+  };
+}
+
+function imageryExportPlan(bounds, mapZoom, mapSize) {
+  const north = clampMercatorLatitude(bounds.getNorth());
+  const south = clampMercatorLatitude(bounds.getSouth());
+  const west = Number(bounds.getWest());
+  const east = Number(bounds.getEast());
+  if (![north, south, west, east].every(Number.isFinite) || north <= south || east <= west) {
+    throw new Error("La extensión visible del mapa no es válida.");
+  }
+
+  const longEdge = Math.max(Number(mapSize.x) || 0, Number(mapSize.y) || 0, 1);
+  const preferredScale = Math.max(1, IMAGERY_TARGET_LONG_EDGE / longEdge);
+  let zoom = Math.min(
+    IMAGERY_MAX_ZOOM,
+    Math.max(0, Math.round(Number(mapZoom) + Math.log2(preferredScale)))
+  );
+  let northWest;
+  let southEast;
+  let width;
+  let height;
+  let minTileX;
+  let maxTileX;
+  let minTileY;
+  let maxTileY;
+  let tileCount;
+
+  do {
+    northWest = slippyPixel(north, west, zoom);
+    southEast = slippyPixel(south, east, zoom);
+    width = Math.max(1, Math.ceil(southEast.x - northWest.x));
+    height = Math.max(1, Math.ceil(southEast.y - northWest.y));
+    minTileX = Math.floor(northWest.x / IMAGERY_TILE_SIZE);
+    maxTileX = Math.floor((southEast.x - Number.EPSILON) / IMAGERY_TILE_SIZE);
+    minTileY = Math.floor(northWest.y / IMAGERY_TILE_SIZE);
+    maxTileY = Math.floor((southEast.y - Number.EPSILON) / IMAGERY_TILE_SIZE);
+    tileCount = (maxTileX - minTileX + 1) * (maxTileY - minTileY + 1);
+    if (
+      zoom > 0 &&
+      (Math.max(width, height) > IMAGERY_MAX_LONG_EDGE || tileCount > IMAGERY_MAX_TILES)
+    ) {
+      zoom -= 1;
+      continue;
+    }
+    break;
+  } while (zoom >= 0);
+
+  const resolution = 2 * Math.PI * WEB_MERCATOR_RADIUS / (IMAGERY_TILE_SIZE * (2 ** zoom));
+  const projectedNorthWest = webMercator(north, west);
+  const projectedSouthEast = {
+    x: projectedNorthWest.x + resolution * width,
+    y: projectedNorthWest.y - resolution * height
+  };
+  const imageSouthEast = inverseWebMercator(projectedSouthEast.x, projectedSouthEast.y);
+
+  return {
+    north,
+    south,
+    west,
+    east,
+    zoom,
+    northWest,
+    southEast,
+    width,
+    height,
+    minTileX,
+    maxTileX,
+    minTileY,
+    maxTileY,
+    tileCount,
+    resolution,
+    projectedNorthWest,
+    projectedSouthEast,
+    imageEast: imageSouthEast.longitude,
+    imageSouth: imageSouthEast.latitude
+  };
+}
+
+async function imageBitmapFromResponse(response) {
+  const blob = await response.blob();
+  if ("createImageBitmap" in window) return createImageBitmap(blob);
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(blob);
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("El navegador no pudo interpretar una tesela aérea."));
+    };
+    image.src = objectUrl;
+  });
+}
+
+function canvasToBlob(canvas, type = "image/png") {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("El navegador no pudo crear la imagen PNG."));
+    }, type);
+  });
+}
+
+function imageryWorldFile(plan) {
+  const pixelX = plan.resolution;
+  const pixelY = -plan.resolution;
+  return [
+    pixelX.toFixed(12),
+    "0.000000000000",
+    "0.000000000000",
+    pixelY.toFixed(12),
+    (plan.projectedNorthWest.x + pixelX / 2).toFixed(6),
+    (plan.projectedNorthWest.y + pixelY / 2).toFixed(6)
+  ].join("\n") + "\n";
+}
+
+function imageryExtentGeoJson(plan) {
+  return {
+    type: "FeatureCollection",
+    name: "extension_imagen_aerea",
+    crs: {
+      type: "name",
+      properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" }
+    },
+    features: [{
+      type: "Feature",
+      properties: {
+        fuente: "Esri World Imagery",
+        zoom: plan.zoom,
+        ancho_px: plan.width,
+        alto_px: plan.height
+      },
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [plan.west, plan.north],
+          [plan.imageEast, plan.north],
+          [plan.imageEast, plan.imageSouth],
+          [plan.west, plan.imageSouth],
+          [plan.west, plan.north]
+        ]]
+      }
+    }]
+  };
+}
+
+async function downloadCurrentImagery() {
+  const button = document.getElementById("mapDownloadImagery");
+  if (!fieldMap || !imageryLayer) {
+    alert("Abra primero el mapa y espere a que cargue la imagen aérea.");
+    return;
+  }
+  if (!navigator.onLine) {
+    alert("La descarga de una imagen aérea completa requiere conexión. Las teselas ya visitadas continuarán disponibles en el mapa offline.");
+    return;
+  }
+
+  const originalText = button?.textContent || "⇩ Imagen aérea";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Preparando…";
+  }
+
+  try {
+    const plan = imageryExportPlan(fieldMap.getBounds(), fieldMap.getZoom(), fieldMap.getSize());
+    const canvas = document.createElement("canvas");
+    canvas.width = plan.width;
+    canvas.height = plan.height;
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) throw new Error("El navegador no permite componer la imagen.");
+    context.fillStyle = "#dce5df";
+    context.fillRect(0, 0, plan.width, plan.height);
+
+    const tileJobs = [];
+    for (let tileY = plan.minTileY; tileY <= plan.maxTileY; tileY += 1) {
+      for (let tileX = plan.minTileX; tileX <= plan.maxTileX; tileX += 1) {
+        tileJobs.push({ tileX, tileY });
+      }
+    }
+
+    let completed = 0;
+    const failures = [];
+    const workers = Array.from({ length: Math.min(6, tileJobs.length) }, async () => {
+      while (tileJobs.length) {
+        const tile = tileJobs.shift();
+        const url =
+          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/" +
+          `${plan.zoom}/${tile.tileY}/${tile.tileX}`;
+        try {
+          const response = await fetch(url, { mode: "cors", cache: "force-cache" });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const image = await imageBitmapFromResponse(response);
+          const drawX = tile.tileX * IMAGERY_TILE_SIZE - plan.northWest.x;
+          const drawY = tile.tileY * IMAGERY_TILE_SIZE - plan.northWest.y;
+          context.drawImage(image, drawX, drawY, IMAGERY_TILE_SIZE, IMAGERY_TILE_SIZE);
+          image.close?.();
+        } catch (error) {
+          failures.push(`${plan.zoom}/${tile.tileY}/${tile.tileX}: ${error.message}`);
+        } finally {
+          completed += 1;
+          if (button) button.textContent = `Imagen ${completed}/${plan.tileCount}`;
+        }
+      }
+    });
+    await Promise.all(workers);
+    if (failures.length) {
+      throw new Error(`No se descargaron ${failures.length} de ${plan.tileCount} teselas. Revise la conexión e inténtelo nuevamente.`);
+    }
+
+    const attribution = "Esri World Imagery · Esri, Maxar, Earthstar Geographics y colaboradores";
+    const fontSize = Math.max(11, Math.min(18, Math.round(plan.width / 110)));
+    context.font = `600 ${fontSize}px system-ui, sans-serif`;
+    context.textAlign = "right";
+    context.textBaseline = "bottom";
+    const textWidth = Math.min(plan.width - 16, context.measureText(attribution).width + 16);
+    context.fillStyle = "rgba(255,255,255,.84)";
+    context.fillRect(plan.width - textWidth - 6, plan.height - fontSize - 14, textWidth, fontSize + 10);
+    context.fillStyle = "#17312f";
+    context.fillText(attribution, plan.width - 12, plan.height - 8, plan.width - 24);
+
+    const imageBlob = await canvasToBlob(canvas);
+    const zip = new JSZip();
+    const base = `BTMM_imagen_aerea_vista_z${plan.zoom}`;
+    const timestamp = new Date().toISOString();
+    const metadata = {
+      createdAt: timestamp,
+      source: "Esri World Imagery",
+      sourceUrl: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer",
+      note: "La fecha, resolución y proveedores de la imagen varían según la ubicación.",
+      imageCrs: "EPSG:3857",
+      extentWgs84: {
+        west: plan.west,
+        south: plan.imageSouth,
+        east: plan.imageEast,
+        north: plan.north
+      },
+      zoom: plan.zoom,
+      widthPixels: plan.width,
+      heightPixels: plan.height,
+      tileCount: plan.tileCount
+    };
+    const prj =
+      'PROJCS["WGS 84 / Pseudo-Mercator",GEOGCS["WGS 84",DATUM["WGS_1984",' +
+      'SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],' +
+      'UNIT["degree",0.0174532925199433]],PROJECTION["Mercator_1SP"],' +
+      'PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],' +
+      'PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1]]';
+
+    zip.file(`${base}.png`, imageBlob);
+    zip.file(`${base}.pgw`, imageryWorldFile(plan));
+    zip.file(`${base}.prj`, prj);
+    zip.file(`${base}_extension.geojson`, JSON.stringify(imageryExtentGeoJson(plan), null, 2));
+    zip.file(`${base}_metadatos.json`, JSON.stringify(metadata, null, 2));
+    zip.file(
+      "LEAME.txt",
+      "Imagen aérea correspondiente a la extensión visible del mapa al momento de la descarga.\n" +
+      "El PNG está georreferenciado en EPSG:3857 mediante los archivos PGW y PRJ.\n" +
+      "La extensión se incluye también como GeoJSON en WGS84.\n" +
+      "Fuente: Esri World Imagery; la fecha, resolución y proveedores varían según la ubicación.\n" +
+      "Para recortar exactamente a un polígono se requiere una capa con al menos una entidad geométrica.\n" +
+      `Fecha de creación: ${timestamp}\n`
+    );
+    const zipBlob = await zip.generateAsync({
+      type: "blob",
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 }
+    });
+    const compactTimestamp = timestamp.replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
+    downloadBlob(`BTMM-imagen-aerea-${compactTimestamp}.zip`, zipBlob);
+  } catch (error) {
+    alert(`No fue posible descargar la imagen aérea. ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
 }
 
 function updateNetworkStatus() {
@@ -1372,13 +1692,13 @@ document.getElementById("lockTripButton")?.addEventListener("click", () => {
 });
 document.getElementById("continueToMap")?.addEventListener("click", () => {
   if (!state.trip.locked) {
-    alert("Bloquee primero la edición de los datos preliminares.");
-    return;
+    setTripLocked(true);
   }
   activatePanel("mapa");
 });
 document.getElementById("mapBackToTrip")?.addEventListener("click", () => activatePanel("gira"));
 document.getElementById("mapLocate")?.addEventListener("click", locateOnMap);
+document.getElementById("mapDownloadImagery")?.addEventListener("click", downloadCurrentImagery);
 document.getElementById("mapBackup")?.addEventListener("click", () => openRecordSheet("exportar"));
 document.getElementById("mapAddRecord")?.addEventListener("click", openRecordMenu);
 document.getElementById("closeRecordMenu")?.addEventListener("click", closeRecordMenu);

@@ -2,8 +2,10 @@
 <html lang="es">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#0f3d3e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="description" content="PWA offline para muestreo BTMM-BMWP-CR, perfil mojado, caudal e identificación asistida.">
     <title>BTMM-BMWT-CR</title>
     <link rel="manifest" href="manifest.webmanifest">
@@ -23,12 +25,24 @@
     </header>
 
     <nav class="tabs" aria-label="Secciones principales">
-      <button class="tab active" data-panel="gira">Gira</button>
-      <button class="tab" data-panel="observaciones">Observaciones</button>
-      <button class="tab" data-panel="macro">Macroinvertebrados</button>
-      <button class="tab" data-panel="identificar">Identificar</button>
-      <button class="tab" data-panel="caudal">Perfil y caudal</button>
-      <button class="tab" data-panel="exportar">Respaldar</button>
+      <button class="tab active" data-panel="gira" aria-label="Datos de gira">
+        <span class="tab-icon" aria-hidden="true">⌂</span><span>Gira</span>
+      </button>
+      <button class="tab" data-panel="observaciones" aria-label="Puntos de observación">
+        <span class="tab-icon" aria-hidden="true">◎</span><span>Puntos</span>
+      </button>
+      <button class="tab" data-panel="macro" aria-label="Muestreo de macroinvertebrados">
+        <span class="tab-icon" aria-hidden="true">▦</span><span>Macro</span>
+      </button>
+      <button class="tab" data-panel="identificar" aria-label="Identificar macroinvertebrados">
+        <span class="tab-icon" aria-hidden="true">◇</span><span>Identificar</span>
+      </button>
+      <button class="tab" data-panel="caudal" aria-label="Perfil mojado y caudal">
+        <span class="tab-icon" aria-hidden="true">≈</span><span>Caudal</span>
+      </button>
+      <button class="tab" data-panel="exportar" aria-label="Respaldar y exportar">
+        <span class="tab-icon" aria-hidden="true">⇩</span><span>Respaldar</span>
+      </button>
     </nav>
 
     <main>
@@ -36,6 +50,14 @@
         <div class="section-head">
           <h2>Datos preliminares de gira</h2>
           <p>Identificación del expediente, equipo de campo, cuerpo de agua y condiciones generales.</p>
+        </div>
+        <div class="quick-actions" aria-label="Acciones rápidas de campo">
+          <p>Nuevo registro</p>
+          <div>
+            <button type="button" data-go-panel="observaciones">+ Observación</button>
+            <button type="button" data-go-panel="macro">+ Muestra</button>
+            <button type="button" data-go-panel="caudal">+ Caudal</button>
+          </div>
         </div>
         <form class="grid-form autosave" id="tripForm">
           <label>Número de expediente

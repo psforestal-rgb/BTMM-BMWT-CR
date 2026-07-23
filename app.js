@@ -1304,7 +1304,6 @@ function initFieldMap() {
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     {
       maxZoom: 20,
-      crossOrigin: true,
       attribution: "Imagery © Esri, Maxar, Earthstar Geographics and contributors"
     }
   );
@@ -1513,6 +1512,7 @@ async function downloadCurrentImagery() {
   }
 
   const originalText = button?.textContent || "⇩ Imagen aérea";
+  let downloadStarted = false;
   if (button) {
     button.disabled = true;
     button.textContent = "Preparando…";
@@ -1624,12 +1624,18 @@ async function downloadCurrentImagery() {
     });
     const compactTimestamp = timestamp.replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
     downloadBlob(`BTMM-imagen-aerea-${compactTimestamp}.zip`, zipBlob);
+    downloadStarted = true;
   } catch (error) {
     alert(`No fue posible descargar la imagen aérea. ${error.message}`);
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = originalText;
+      button.textContent = downloadStarted ? "✓ Descarga lista" : originalText;
+      if (downloadStarted) {
+        setTimeout(() => {
+          button.textContent = originalText;
+        }, 5000);
+      }
     }
   }
 }

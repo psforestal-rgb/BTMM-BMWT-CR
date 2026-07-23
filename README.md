@@ -10,8 +10,8 @@ grandes se adapta a una distribución de dos columnas.
 
 ## Funciones
 
-- Datos preliminares de gira: expediente, fecha, participantes, sector, cuerpo de
-  agua, meteorología y objetivo.
+- Inicio de gira con expediente, fecha y hora automáticas, participantes estructurados, área silvestre protegida, cuerpo de agua, condición meteorológica inicial y observaciones.
+- Cierre separado con hora final, condiciones meteorológicas imperantes y observaciones finales.
 - Coordenadas en todos los puntos de observación, macroinvertebrados y perfil:
   conserva la lectura WGS84 del GPS y calcula CRTM05.
 - Selector entre `CR05 / CRTM05 (EPSG:5367)` y

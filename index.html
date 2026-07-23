@@ -134,9 +134,9 @@
         </form>
         <div class="trip-workflow-actions">
           <button type="button" id="lockTripButton" class="secondary">Bloquear edición</button>
-          <button type="button" id="continueToMap" class="primary" disabled>Continuar al mapa</button>
+          <button type="button" id="continueToMap" class="primary">Continuar al mapa</button>
         </div>
-        <p id="tripLockStatus" class="workflow-status" aria-live="polite">Revise los datos y bloquee la edición antes de continuar.</p>
+        <p id="tripLockStatus" class="workflow-status" aria-live="polite">Puede bloquear los datos para revisarlos; al continuar se bloquearán automáticamente.</p>
       </section>
 
       <section class="panel map-panel" id="mapa" aria-label="Mapa de trabajo de campo">
@@ -148,6 +148,7 @@
               <span id="mapGpsStatus">Esperando ubicación…</span>
             </div>
             <button type="button" id="mapLocate" class="map-locate-button" aria-label="Centrar mapa en mi ubicación">◎</button>
+            <button type="button" id="mapDownloadImagery" class="map-download-button">⇩ Imagen aérea</button>
             <button type="button" id="mapBackup" aria-label="Abrir respaldo">Respaldar</button>
           </div>
           <div id="fieldMap" class="field-map" role="application" aria-label="Imagen aérea con ubicación actual y puntos guardados"></div>

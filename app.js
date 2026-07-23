@@ -959,8 +959,125 @@ document.getElementById("clearData").addEventListener("click", async () => {
 window.addEventListener("online", updateNetworkStatus);
 window.addEventListener("offline", updateNetworkStatus);
 
+function ensureUpdateControls() {
+  const headerStatus = document.querySelector(".header-status");
+  let status = document.getElementById("updateStatus");
+  if (!status && headerStatus) {
+    status = document.createElement("div");
+    status.id = "updateStatus";
+    status.className = "status-pill";
+    status.setAttribute("aria-live", "polite");
+    status.textContent = "Actualización pendiente";
+    headerStatus.appendChild(status);
+  }
+
+  const actions = document.querySelector("#exportar .actions");
+  let button = document.getElementById("checkForUpdates");
+  if (!button && actions) {
+    button = document.createElement("button");
+    button.type = "button";
+    button.id = "checkForUpdates";
+    button.textContent = "Actualizar aplicación";
+    actions.insertBefore(button, actions.firstChild);
+  }
+  return { status, button };
+}
+
+async function setupServiceWorkerUpdates() {
+  if (!("serviceWorker" in navigator)) return;
+
+  const { status, button } = ensureUpdateControls();
+  let registration;
+  let manualRequest = false;
+  let controllerChanging = false;
+
+  const setStatus = (message) => {
+    if (status) status.textContent = message;
+  };
+
+  const reloadOnce = () => {
+    const key = "btmm-cache-refresh-reload";
+    const lastReload = Number(sessionStorage.getItem(key) || 0);
+    if (!manualRequest && Date.now() - lastReload < 15000) return;
+    sessionStorage.setItem(key, String(Date.now()));
+    window.location.reload();
+  };
+
+  const refreshCache = async ({ manual = false } = {}) => {
+    manualRequest = manual;
+    if (!navigator.onLine) {
+      setStatus("Sin conexión · se conserva la versión offline");
+      return;
+    }
+    if (manual && button) button.disabled = true;
+    setStatus("Buscando actualización…");
+    try {
+      await registration.update();
+      const worker = registration.waiting || registration.installing;
+      if (worker) {
+        worker.postMessage({ type: "SKIP_WAITING" });
+        return;
+      }
+      const target = navigator.serviceWorker.controller || registration.active;
+      if (!target) {
+        setStatus("Preparando uso offline…");
+        return;
+      }
+      target.postMessage({ type: "REFRESH_APP_CACHE" });
+    } catch (error) {
+      setStatus("No se pudo comprobar · versión offline disponible");
+      if (manual && button) button.disabled = false;
+      console.warn("No fue posible actualizar la PWA.", error);
+    }
+  };
+
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (controllerChanging) return;
+    controllerChanging = true;
+    setStatus("Nueva versión lista · recargando…");
+    reloadOnce();
+  });
+
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.type === "APP_CACHE_REFRESHED") {
+      setStatus("Aplicación actualizada");
+      if (button) button.disabled = false;
+      reloadOnce();
+    }
+    if (event.data?.type === "APP_CACHE_REFRESH_FAILED") {
+      setStatus("No se pudo comprobar · versión offline disponible");
+      if (button) button.disabled = false;
+    }
+  });
+
+  try {
+    registration = await navigator.serviceWorker.register("./sw.js", {
+      updateViaCache: "none"
+    });
+    await navigator.serviceWorker.ready;
+    setStatus("Comprobando versión…");
+
+    registration.addEventListener("updatefound", () => {
+      setStatus("Descargando nueva versión…");
+      const worker = registration.installing;
+      worker?.addEventListener("statechange", () => {
+        if (worker.state === "installed" && navigator.serviceWorker.controller) {
+          setStatus("Instalando nueva versión…");
+          worker.postMessage({ type: "SKIP_WAITING" });
+        }
+      });
+    });
+
+    button?.addEventListener("click", () => refreshCache({ manual: true }));
+    await refreshCache();
+  } catch (error) {
+    setStatus("Actualización no disponible");
+    console.warn("No fue posible registrar el servicio offline.", error);
+  }
+}
+
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+  window.addEventListener("load", () => void setupServiceWorkerUpdates());
 }
 
 updateNetworkStatus();

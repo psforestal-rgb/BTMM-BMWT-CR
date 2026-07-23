@@ -1,4 +1,4 @@
-const CACHE_NAME = "btmm-bmwt-cr-v8-map-imagery-export";
+const CACHE_NAME = "btmm-bmwt-cr-v9-map-imagery-cors";
 const ASSETS = [
   "./",
   "./index.html",
@@ -90,7 +90,8 @@ self.addEventListener("fetch", (event) => {
   if (isImageryTile) {
     event.respondWith(
       caches.match(event.request).then((cached) => {
-        if (cached) return cached;
+        const needsCorsResponse = event.request.mode === "cors";
+        if (cached && (!needsCorsResponse || cached.type !== "opaque")) return cached;
         return fetch(event.request).then((response) => {
           const copy = response.clone();
           caches.open("btmm-map-tiles-v1").then((cache) => cache.put(event.request, copy));

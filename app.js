@@ -76,7 +76,7 @@ function normalizeParticipants(value, useDefault = false) {
 }
 
 function persistDraft() {
-  state.schemaVersion = 5;
+  state.schemaVersion = 6;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   document.getElementById("saveStatus").textContent =
     "Guardado " + new Date().toLocaleTimeString("es-CR");
@@ -93,6 +93,8 @@ const RECORD_SUFFIXES = Object.freeze({
 });
 
 let state = loadState();
+let editingObsId = null;
+let editingMacroId = null;
 let keyNodeId = "start";
 let keyHistory = [];
 let keyResult = null;
@@ -116,7 +118,7 @@ function uid(prefix = "rec") {
 
 function emptyState() {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     trip: defaultTrip(),
     closure: {},
     observations: [],
@@ -209,19 +211,28 @@ function loadState() {
   if (!next.closure.horaFinal && rawTrip.horaCierre) {
     next.closure.horaFinal = rawTrip.horaCierre;
   }
-  next.schemaVersion = 5;
+  next.schemaVersion = 6;
   next.observations = Array.isArray(raw.observations) ? raw.observations.map((record) => ({
-    ...record, id: record.id || uid("obs"), photoIds: record.photoIds || []
+    ...record, id: record.id || uid("obs"), photoIds: record.photoIds || [],
+    locked: record.locked === undefined ? true : Boolean(record.locked)
   })) : [];
   next.macroSamples = Array.isArray(raw.macroSamples) ? raw.macroSamples.map((record) => ({
-    ...record, id: record.id || uid("macro"), photoIds: record.photoIds || []
+    ...record, id: record.id || uid("macro"), photoIds: record.photoIds || [],
+    locked: record.locked === undefined ? true : Boolean(record.locked)
   })) : [];
   next.identifications = Array.isArray(raw.identifications) ? raw.identifications.map((record) => ({
     ...record, id: record.id || uid("id"), photoIds: record.photoIds || []
   })) : [];
   next.flowSections = Array.isArray(raw.flowSections) ? raw.flowSections.map((record) => ({
-    ...record, id: record.id || uid("flow"), photoIds: record.photoIds || [],
-    verticals: Array.isArray(record.verticals) ? record.verticals : []
+    ...record,
+    id: record.id || uid("flow"),
+    photoIds: record.photoIds || [],
+    verticals: Array.isArray(record.verticals) ? record.verticals : [],
+    locked: Boolean(record.locked),
+    anchoTotal: record.anchoTotal ?? "0",
+    verticalesRecomendadas: record.verticalesRecomendadas ?? "25",
+    metodoVelocidad: record.metodoVelocidad || "Velocímetro o molinete",
+    factor: record.factor ?? "0.85"
   })) : [];
   if (!next.flowSections.length && raw.flowSection && Object.keys(raw.flowSection).length) {
     const migrated = {
@@ -340,6 +351,18 @@ function calculateFlow(section) {
       ((left.velocidad + right.velocidad) / 2);
   }
   return { cubic, liters: cubic * 1000, verticals };
+}
+
+function recommendedVerticalPositions(width, count) {
+  const totalWidth = Number(width);
+  const total = Math.max(0, Math.floor(Number(count) || 0));
+  if (!Number.isFinite(totalWidth) || totalWidth <= 0 || !total) return [];
+  return Array.from({ length: total }, (_, index) => (totalWidth * (index + 1)) / (total + 1));
+}
+
+function setFlowSectionLocked(section, locked) {
+  section.locked = Boolean(locked);
+  saveState();
 }
 
 function coordinateRow(record) {
@@ -953,6 +976,10 @@ function preparePhotoControls() {
 
 function prepareRecordForm(form, recordType) {
   if (!form || !RECORD_SUFFIXES[recordType]) return;
+  const editingId = recordType === "observation" ? editingObsId
+    : recordType === "macro" ? editingMacroId
+    : null;
+  if (editingId) return;
   if (form.elements.codigo) form.elements.codigo.value = peekRecordCode(recordType);
   if (form.elements.horaInicio && !form.elements.horaInicio.value) {
     form.elements.horaInicio.value = localTimeValue();
@@ -1320,6 +1347,290 @@ function addParticipantFromOption(option) {
   persistDraft();
 }
 
+function renderFlowProfileGraphic(section) {
+  const container = document.getElementById("flowProfileGraphic");
+  if (!container) return;
+  const width = Number(section.anchoTotal || 0);
+  if (!Number.isFinite(width) || width <= 0) {
+    container.innerHTML = '<p class="flow-graphic-empty">Ingrese el ancho mojado para dibujar el perfil.</p>';
+    return;
+  }
+
+  const verticals = (section.verticals || [])
+    .map((vertical, index) => ({
+      index,
+      distancia: Number(vertical.distancia),
+      profundidad: Number(vertical.profundidad)
+    }))
+    .filter((vertical) => Number.isFinite(vertical.distancia) && Number.isFinite(vertical.profundidad))
+    .sort((a, b) => a.distancia - b.distancia);
+
+  const svgWidth = 640;
+  const svgHeight = 260;
+  const marginX = 40;
+  const drawWidth = svgWidth - marginX * 2;
+  const baselineY = 92;
+  const depthRange = 130;
+  const tickHeight = 26;
+  const maxDepth = Math.max(0.01, ...verticals.map((vertical) => vertical.profundidad));
+
+  const xAt = (distancia) => marginX + Math.max(0, Math.min(1, distancia / width)) * drawWidth;
+  const yAt = (profundidad) => baselineY + Math.max(0, Math.min(1, profundidad / maxDepth)) * depthRange;
+
+  const recommendedCount = Math.max(0, Math.floor(Number(section.verticalesRecomendadas) || 0));
+  const recommended = recommendedVerticalPositions(width, recommendedCount);
+
+  const parts = [];
+  parts.push(`<svg viewBox="0 0 ${svgWidth} ${svgHeight}" role="img" aria-label="Dibujo del perfil mojado de ${width.toFixed(2)} metros de ancho">`);
+  parts.push(`<line x1="${marginX}" y1="${baselineY}" x2="${marginX + drawWidth}" y2="${baselineY}" class="flow-baseline" />`);
+  parts.push(`<line x1="${marginX}" y1="${baselineY - tickHeight}" x2="${marginX}" y2="${baselineY}" class="flow-edge-tick" />`);
+  parts.push(`<line x1="${marginX + drawWidth}" y1="${baselineY - tickHeight}" x2="${marginX + drawWidth}" y2="${baselineY}" class="flow-edge-tick" />`);
+  parts.push(`<text x="${marginX}" y="${baselineY - tickHeight - 6}" class="flow-axis-label">0 m</text>`);
+  parts.push(`<text x="${marginX + drawWidth}" y="${baselineY - tickHeight - 6}" text-anchor="end" class="flow-axis-label">${width.toFixed(2)} m</text>`);
+
+  recommended.forEach((distancia, index) => {
+    const x = xAt(distancia);
+    parts.push(`<g class="flow-recommended-tick" data-recommended-distance="${distancia.toFixed(2)}">
+      <line x1="${x}" y1="${baselineY - tickHeight}" x2="${x}" y2="${baselineY}" />
+      <text x="${x}" y="${baselineY - tickHeight - 6}" text-anchor="middle">${index + 1}: ${distancia.toFixed(2)} m</text>
+    </g>`);
+  });
+
+  if (verticals.length) {
+    const points = [
+      { distancia: 0, profundidad: 0 },
+      ...verticals,
+      { distancia: width, profundidad: 0 }
+    ];
+    const pointsAttr = points.map((point) => `${xAt(point.distancia)},${yAt(point.profundidad)}`).join(" ");
+    parts.push(`<polyline points="${pointsAttr}" class="flow-profile-line" />`);
+    verticals.forEach((vertical) => {
+      const x = xAt(vertical.distancia);
+      const y = yAt(vertical.profundidad);
+      parts.push(`<g class="flow-vertical-marker" data-vertical-index="${vertical.index}">
+        <line x1="${x}" y1="${baselineY}" x2="${x}" y2="${y}" class="flow-vertical-stem" />
+        <circle cx="${x}" cy="${y}" r="5" class="flow-vertical-point" />
+        <text x="${x}" y="${Math.min(y + 18, svgHeight - 10)}" text-anchor="middle" class="flow-vertical-label">${vertical.distancia.toFixed(2)} m</text>
+      </g>`);
+    });
+  }
+
+  parts.push(`<text x="${marginX}" y="${svgHeight - 8}" class="flow-scale-note">Profundidad máxima registrada: ${maxDepth.toFixed(2)} m · eje vertical con exageración esquemática, no a escala del ancho</text>`);
+  parts.push("</svg>");
+  container.innerHTML = parts.join("");
+
+  container.querySelectorAll(".flow-recommended-tick").forEach((tick) => {
+    tick.addEventListener("click", () => {
+      const form = document.getElementById("verticalForm");
+      if (!form || form.elements.distancia.disabled) return;
+      form.elements.distancia.value = tick.dataset.recommendedDistance;
+      form.elements.profundidad.focus();
+    });
+  });
+  container.querySelectorAll(".flow-vertical-marker").forEach((marker) => {
+    marker.addEventListener("click", () => {
+      const index = marker.dataset.verticalIndex;
+      document.querySelector(`.vertical-row[data-vertical-index="${index}"] .vertical-distancia`)?.focus();
+    });
+  });
+}
+
+function renderVerticalList(section, locked) {
+  const container = document.getElementById("verticalList");
+  if (!container) return;
+  container.innerHTML = "";
+  const ordered = section.verticals
+    .map((vertical, index) => ({ vertical, index }))
+    .sort((a, b) => Number(a.vertical.distancia) - Number(b.vertical.distancia));
+
+  ordered.forEach(({ vertical, index }, displayIndex) => {
+    const row = document.createElement("div");
+    row.className = "vertical-row";
+    row.dataset.verticalIndex = String(index);
+    row.innerHTML = `
+      <span class="vertical-row-label">V${displayIndex + 1}</span>
+      <label>Distancia acumulada (m)<input type="number" min="0" step="0.01" class="vertical-distancia" value="${escapeHtml(vertical.distancia)}"></label>
+      <label>Profundidad (m)<input type="number" min="0" step="0.001" class="vertical-profundidad" value="${escapeHtml(vertical.profundidad)}"></label>
+      <label>Velocidad (m/s)<input type="number" min="0" step="0.001" class="vertical-velocidad" value="${escapeHtml(vertical.velocidad)}"></label>
+      <label>Observación<input type="text" class="vertical-obs" value="${escapeHtml(vertical.obs || "")}"></label>
+      <button type="button" class="vertical-remove">Eliminar</button>
+    `;
+    const distanciaInput = row.querySelector(".vertical-distancia");
+    const profundidadInput = row.querySelector(".vertical-profundidad");
+    const velocidadInput = row.querySelector(".vertical-velocidad");
+    const obsInput = row.querySelector(".vertical-obs");
+    const removeButton = row.querySelector(".vertical-remove");
+    [distanciaInput, profundidadInput, velocidadInput, obsInput, removeButton].forEach((field) => {
+      field.disabled = locked;
+    });
+    distanciaInput.addEventListener("change", () => {
+      const value = Number(distanciaInput.value);
+      const width = Number(section.anchoTotal || 0);
+      if (!Number.isFinite(value) || value < 0 || (width > 0 && value > width)) {
+        alert("La distancia debe estar entre 0 y el ancho mojado de la sección.");
+        distanciaInput.value = vertical.distancia;
+        return;
+      }
+      vertical.distancia = distanciaInput.value;
+      saveState();
+    });
+    profundidadInput.addEventListener("change", () => {
+      vertical.profundidad = profundidadInput.value;
+      saveState();
+    });
+    velocidadInput.addEventListener("change", () => {
+      vertical.velocidad = velocidadInput.value;
+      saveState();
+    });
+    obsInput.addEventListener("change", () => {
+      vertical.obs = obsInput.value;
+      saveState();
+    });
+    removeButton.addEventListener("click", () => {
+      section.verticals.splice(index, 1);
+      saveState();
+    });
+    container.appendChild(row);
+  });
+
+  if (!ordered.length) {
+    const empty = document.createElement("p");
+    empty.className = "vertical-empty";
+    empty.textContent = "Aún no hay verticales registradas para esta sección.";
+    container.appendChild(empty);
+  }
+}
+
+function renderFlowSectionList() {
+  const sectionList = document.getElementById("sectionList");
+  if (!sectionList) return;
+  sectionList.innerHTML = "";
+  state.flowSections.forEach((section, index) => {
+    const flow = calculateFlow(section);
+    sectionList.appendChild(makeItem(section, section.codigo || `Sección ${index + 1}`, [
+      `Hora de inicio: ${section.horaInicio || "s/d"}`,
+      ...coordinateRow(section),
+      `Ancho: ${section.anchoTotal || "s/d"} m · ${section.verticals.length} verticales`,
+      `Caudal: ${flow.cubic.toFixed(4)} m³/s · ${flow.liters.toFixed(2)} L/s`,
+      section.locked ? "Estado: bloqueada" : "Estado: en edición"
+    ], "flow", () => removeRecord(state.flowSections, index), [{
+      label: section.id === state.activeFlowId ? "Sección activa" : "Abrir sección",
+      primary: section.id !== state.activeFlowId,
+      action: () => {
+        state.activeFlowId = section.id;
+        saveState();
+      }
+    }]));
+  });
+}
+
+function renderFlowEditor() {
+  const activeSection = state.flowSections.find((section) => section.id === state.activeFlowId);
+  const activeMessage = document.getElementById("activeSectionMessage");
+  const setupForm = document.getElementById("flowSetupForm");
+  const verticalForm = document.getElementById("verticalForm");
+  const methodForm = document.getElementById("flowMethodForm");
+  const editor = document.getElementById("flowEditor");
+  const lockButton = document.getElementById("lockFlowButton");
+  const summary = document.getElementById("flowSummary");
+  if (!activeMessage || !setupForm || !verticalForm || !methodForm || !editor || !lockButton || !summary) return;
+
+  if (!activeSection) {
+    activeMessage.textContent = "Agregue o seleccione una sección para registrar verticales.";
+    editor.classList.add("flow-editor-empty");
+    [...setupForm.elements, ...verticalForm.elements, ...methodForm.elements].forEach((field) => {
+      field.disabled = true;
+    });
+    document.getElementById("verticalList").innerHTML = "";
+    document.getElementById("flowProfileGraphic").innerHTML = "";
+    summary.textContent = "Seleccione una sección.";
+    lockButton.disabled = true;
+    lockButton.textContent = "Guardar y bloquear edición";
+    return;
+  }
+
+  editor.classList.remove("flow-editor-empty");
+  activeMessage.textContent = `Sección activa: ${activeSection.codigo || activeSection.punto || "sin código"}`;
+
+  const locked = Boolean(activeSection.locked);
+  fillForm(setupForm, activeSection);
+  fillForm(methodForm, activeSection);
+  [...setupForm.elements, ...methodForm.elements, ...verticalForm.elements].forEach((field) => {
+    field.disabled = locked;
+  });
+
+  lockButton.disabled = false;
+  lockButton.textContent = locked ? "Editar" : "Guardar y bloquear edición";
+
+  renderFlowProfileGraphic(activeSection);
+  renderVerticalList(activeSection, locked);
+
+  const flow = calculateFlow(activeSection);
+  const recommended = Number(activeSection.verticalesRecomendadas || 0);
+  const warning = recommended && activeSection.verticals.length < recommended
+    ? ` · advertencia ${activeSection.verticals.length}/${recommended} verticales`
+    : "";
+  summary.textContent =
+    `Caudal: ${flow.cubic.toFixed(4)} m³/s · ${flow.liters.toFixed(2)} L/s${warning}`;
+}
+
+function updateRecordFormMode(recordType) {
+  const isObservation = recordType === "observation";
+  const button = document.getElementById(isObservation ? "saveObsButton" : "saveMacroButton");
+  const editingId = isObservation ? editingObsId : editingMacroId;
+  if (button) button.textContent = editingId ? "Guardar cambios y bloquear" : "Guardar y bloquear edición";
+}
+
+function startEditingRecord(recordType, id) {
+  const collection = collectionForType(recordType);
+  const record = collection.find((item) => item.id === id);
+  if (!record) return;
+  const formId = recordType === "observation" ? "obsForm" : "macroForm";
+  const panelId = recordType === "observation" ? "observaciones" : "macro";
+  const form = document.getElementById(formId);
+  if (!form) return;
+  if (recordType === "observation") editingObsId = id; else editingMacroId = id;
+  record.locked = false;
+  fillForm(form, record);
+  resetQueue(form);
+  if (form.elements.coordMode) {
+    form.elements.coordMode.value = "manual";
+    form.elements.coordMode.dispatchEvent(new Event("change"));
+  }
+  setCoordinateLock(form, true);
+  saveState();
+  openRecordSheet(panelId);
+}
+
+async function saveEditableRecord(form, collection, recordType, prefix, getEditingId, setEditingId) {
+  const editingId = getEditingId();
+  if (editingId) {
+    const record = collection.find((item) => item.id === editingId);
+    if (!record) {
+      setEditingId(null);
+      return null;
+    }
+    Object.assign(record, formToObject(form));
+    record.locked = true;
+    const files = photoQueues.get(getQueueKey(form)) || [];
+    try {
+      const ids = await writePhotos(files, recordType, record.id, record);
+      record.photoIds = [...(record.photoIds || []), ...ids];
+    } catch (error) {
+      alert(`El registro se guardó, pero no todas las fotografías. ${error.message}`);
+    }
+    form.reset();
+    stopGpsCollection(form);
+    setCoordinateLock(form, false);
+    resetQueue(form);
+    setEditingId(null);
+    saveState();
+    await updateStorageEstimate();
+    return record;
+  }
+  return addRecordFromForm(form, collection, recordType, prefix, { locked: true });
+}
+
 function render() {
   fillForm(document.getElementById("tripForm"), state.trip);
   fillForm(document.getElementById("closureForm"), state.closure);
@@ -1331,9 +1642,14 @@ function render() {
     obsList.appendChild(makeItem(record, record.codigo || `Observación ${index + 1}`, [
       `${record.tipo || "Observación"} · inicio ${record.horaInicio || "s/d"}`,
       ...coordinateRow(record),
-      record.detalle || record.notas || ""
-    ], "observation", () => removeRecord(state.observations, index)));
+      record.detalle || record.notas || "",
+      record.locked ? "Estado: bloqueada" : "Estado: en edición"
+    ], "observation", () => removeRecord(state.observations, index), [{
+      label: "Editar",
+      action: () => startEditingRecord("observation", record.id)
+    }]));
   });
+  updateRecordFormMode("observation");
 
   const macroList = document.getElementById("macroList");
   macroList.innerHTML = "";
@@ -1346,9 +1662,14 @@ function render() {
       `Hábitats: ${record.habitats || "sin dato"}`,
       `Familias: ${record.familias || "sin dato"}`,
       `BMWP-CR preliminar: ${result.score} · ${classifyBmwp(result.score)}` +
-        (result.missing.length ? ` · sin puntaje cargado: ${result.missing.join(", ")}` : "")
-    ], "macro", () => removeRecord(state.macroSamples, index)));
+        (result.missing.length ? ` · sin puntaje cargado: ${result.missing.join(", ")}` : ""),
+      record.locked ? "Estado: bloqueada" : "Estado: en edición"
+    ], "macro", () => removeRecord(state.macroSamples, index), [{
+      label: "Editar",
+      action: () => startEditingRecord("macro", record.id)
+    }]));
   });
+  updateRecordFormMode("macro");
   const lastSample = state.macroSamples.at(-1);
   const latestScore = lastSample ? bmwpScoreForSample(lastSample) : null;
   document.getElementById("bmwpSummary").textContent = latestScore
@@ -1369,57 +1690,8 @@ function render() {
     ], "identification", () => removeRecord(state.identifications, index)));
   });
 
-  const sectionList = document.getElementById("sectionList");
-  sectionList.innerHTML = "";
-  state.flowSections.forEach((section, index) => {
-    const flow = calculateFlow(section);
-    sectionList.appendChild(makeItem(section, section.codigo || `Sección ${index + 1}`, [
-      `Hora de inicio: ${section.horaInicio || "s/d"}`,
-      ...coordinateRow(section),
-      `Ancho: ${section.anchoTotal || "s/d"} m · ${section.verticals.length} verticales`,
-      `Caudal: ${flow.cubic.toFixed(4)} m³/s · ${flow.liters.toFixed(2)} L/s`
-    ], "flow", () => removeRecord(state.flowSections, index), [{
-      label: section.id === state.activeFlowId ? "Sección activa" : "Registrar verticales",
-      primary: section.id !== state.activeFlowId,
-      action: () => {
-        state.activeFlowId = section.id;
-        saveState();
-      }
-    }]));
-  });
-
-  const activeSection = state.flowSections.find((section) => section.id === state.activeFlowId);
-  const activeMessage = document.getElementById("activeSectionMessage");
-  const verticalForm = document.getElementById("verticalForm");
-  const verticalList = document.getElementById("verticalList");
-  verticalList.innerHTML = "";
-  [...verticalForm.elements].forEach((field) => { field.disabled = !activeSection; });
-  if (!activeSection) {
-    activeMessage.textContent = "Agregue o seleccione una sección para registrar verticales.";
-    document.getElementById("flowSummary").textContent = "Seleccione una sección.";
-  } else {
-    activeMessage.textContent = `Sección activa: ${activeSection.codigo || activeSection.punto || "sin código"}`;
-    const flow = calculateFlow(activeSection);
-    flow.verticals.forEach((vertical, displayIndex) => {
-      const simpleRecord = { id: `${activeSection.id}-vertical-${vertical.rawIndex}` };
-      const item = makeItem(simpleRecord, `Vertical ${displayIndex + 1}`, [
-        `Distancia: ${vertical.distancia} m · Profundidad: ${vertical.profundidad} m · Velocidad: ${vertical.velocidad} m/s`,
-        vertical.obs || ""
-      ], "none", () => {
-        activeSection.verticals.splice(vertical.rawIndex, 1);
-        saveState();
-      });
-      item.querySelector("button:nth-last-child(2)")?.remove();
-      item.querySelector(".photo-gallery")?.remove();
-      verticalList.appendChild(item);
-    });
-    const recommended = Number(activeSection.verticalesRecomendadas || 25);
-    const warning = activeSection.verticals.length < recommended
-      ? ` · advertencia ${activeSection.verticals.length}/${recommended} verticales`
-      : "";
-    document.getElementById("flowSummary").textContent =
-      `Caudal: ${flow.cubic.toFixed(4)} m³/s · ${flow.liters.toFixed(2)} L/s${warning}`;
-  }
+  renderFlowSectionList();
+  renderFlowEditor();
 
   document.getElementById("jsonPreview").textContent = JSON.stringify({
     ...state,
@@ -2342,24 +2614,47 @@ document.getElementById("setEndTime").addEventListener("click", () => {
 
 document.getElementById("obsForm").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const record = await addRecordFromForm(
-    event.currentTarget, state.observations, "observation", "obs"
+  const record = await saveEditableRecord(
+    event.currentTarget, state.observations, "observation", "obs",
+    () => editingObsId, (value) => { editingObsId = value; }
   );
   if (record) closeRecordSheet();
 });
 
+document.getElementById("closeObsButton").addEventListener("click", () => {
+  editingObsId = null;
+  render();
+  closeRecordSheet();
+});
+
 document.getElementById("macroForm").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const record = await addRecordFromForm(
-    event.currentTarget, state.macroSamples, "macro", "macro"
+  const record = await saveEditableRecord(
+    event.currentTarget, state.macroSamples, "macro", "macro",
+    () => editingMacroId, (value) => { editingMacroId = value; }
   );
   if (record) closeRecordSheet();
+});
+
+document.getElementById("closeMacroButton").addEventListener("click", () => {
+  editingMacroId = null;
+  render();
+  closeRecordSheet();
 });
 
 document.getElementById("sectionForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const section = await addRecordFromForm(
-    event.currentTarget, state.flowSections, "flow", "flow", { verticals: [] }
+    event.currentTarget, state.flowSections, "flow", "flow",
+    {
+      verticals: [],
+      anchoTotal: "0",
+      verticalesRecomendadas: "25",
+      metodoVelocidad: "Velocímetro o molinete",
+      factor: "0.85",
+      notas: "",
+      locked: false
+    }
   );
   if (!section) return;
   state.activeFlowId = section.id;
@@ -2367,18 +2662,51 @@ document.getElementById("sectionForm").addEventListener("submit", async (event) 
   prepareRecordForm(event.currentTarget, "flow");
 });
 
+document.getElementById("flowSetupForm").addEventListener("submit", (event) => event.preventDefault());
+document.getElementById("flowMethodForm").addEventListener("submit", (event) => event.preventDefault());
+
+document.getElementById("flowSetupForm").addEventListener("input", (event) => {
+  const section = state.flowSections.find((item) => item.id === state.activeFlowId);
+  if (!section || section.locked) return;
+  Object.assign(section, formToObject(event.currentTarget));
+  saveState();
+});
+
+document.getElementById("flowMethodForm").addEventListener("input", (event) => {
+  const section = state.flowSections.find((item) => item.id === state.activeFlowId);
+  if (!section || section.locked) return;
+  Object.assign(section, formToObject(event.currentTarget));
+  saveState();
+});
+
 document.getElementById("verticalForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const section = state.flowSections.find((item) => item.id === state.activeFlowId);
-  if (!section) return;
+  if (!section || section.locked) return;
+  const width = Number(section.anchoTotal || 0);
+  if (!width) {
+    alert("Ingrese primero el ancho mojado de la sección.");
+    return;
+  }
   const vertical = formToObject(event.currentTarget);
-  if (Number(vertical.distancia) > Number(section.anchoTotal)) {
-    alert("La distancia de la vertical no puede superar el ancho mojado de la sección.");
+  const distancia = Number(vertical.distancia);
+  if (!Number.isFinite(distancia) || distancia < 0 || distancia > width) {
+    alert("La distancia de la vertical debe estar entre 0 y el ancho mojado de la sección.");
     return;
   }
   section.verticals.push(vertical);
   event.currentTarget.reset();
   saveState();
+});
+
+document.getElementById("lockFlowButton").addEventListener("click", () => {
+  const section = state.flowSections.find((item) => item.id === state.activeFlowId);
+  if (!section) return;
+  setFlowSectionLocked(section, !section.locked);
+});
+
+document.getElementById("closeFlowButton").addEventListener("click", () => {
+  closeRecordSheet();
 });
 
 document.getElementById("keyBack").addEventListener("click", backDichotomousKey);

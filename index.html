@@ -250,7 +250,10 @@
           <label class="wide">Detalle
             <textarea name="detalle" rows="4" required placeholder="Describa la observación con el detalle necesario"></textarea>
           </label>
-          <button type="submit" class="primary">Guardar observación</button>
+          <div class="wide record-lock-actions">
+            <button type="submit" class="primary" id="saveObsButton">Guardar y bloquear edición</button>
+            <button type="button" class="secondary" id="closeObsButton">Cerrar y volver al mapa</button>
+          </div>
         </form>
         <div class="list" id="obsList"></div>
       </section>
@@ -374,7 +377,10 @@
             <span class="help">Las selecciones sucesivas se acumulan antes de guardar.</span>
             <span class="photo-queue-status">0 fotografías preparadas</span>
           </label>
-          <button type="submit" class="primary">Agregar muestra</button>
+          <div class="wide record-lock-actions">
+            <button type="submit" class="primary" id="saveMacroButton">Guardar y bloquear edición</button>
+            <button type="button" class="secondary" id="closeMacroButton">Cerrar y volver al mapa</button>
+          </div>
         </form>
         <div class="score-card" id="bmwpSummary">BMWP-CR preliminar: 0</div>
         <div class="list" id="macroList"></div>
@@ -479,25 +485,6 @@
             </div>
             <p class="field-status" aria-live="polite"></p>
           </div>
-          <label>Ancho mojado total (m)
-            <input name="anchoTotal" type="number" min="0" step="0.01" required>
-          </label>
-          <label>Verticales recomendadas
-            <input name="verticalesRecomendadas" type="number" min="1" step="1" value="25">
-          </label>
-          <label>Método de velocidad
-            <select name="metodoVelocidad">
-              <option>Velocímetro o molinete</option>
-              <option>Flotador superficial con factor de corrección</option>
-              <option>Estimación preliminar</option>
-            </select>
-          </label>
-          <label>Factor de corrección de flotador
-            <input name="factor" type="number" min="0" step="0.01" value="0.85">
-          </label>
-          <label class="wide">Notas de control de sección
-            <textarea name="notas" rows="3" placeholder="Sección recta, flujo uniforme, remolinos, turbulencia, obstrucciones o lluvia reciente"></textarea>
-          </label>
           <label class="wide photo-field">Fotografías de la sección y equipo
             <input class="photo-input" type="file" accept="image/*" multiple>
             <span class="help">Incluya vistas aguas arriba, aguas abajo, sección transversal y lectura del equipo.</span>
@@ -507,23 +494,62 @@
         </form>
 
         <div class="active-section" id="activeSectionMessage">Agregue o seleccione una sección para registrar verticales.</div>
-        <form class="grid-form compact" id="verticalForm">
-          <label>Distancia desde margen izquierda (m)
-            <input name="distancia" type="number" min="0" step="0.01" required>
-          </label>
-          <label>Profundidad (m)
-            <input name="profundidad" type="number" min="0" step="0.001" required>
-          </label>
-          <label>Velocidad media (m/s)
-            <input name="velocidad" type="number" min="0" step="0.001" required>
-          </label>
-          <label>Observación
-            <input name="obs" placeholder="Margen, centro, turbulencia u obstáculo">
-          </label>
-          <button type="submit" class="primary">Agregar vertical</button>
-        </form>
-        <div class="score-card" id="flowSummary">Seleccione una sección.</div>
-        <div class="list" id="verticalList"></div>
+
+        <div class="flow-editor" id="flowEditor">
+          <form class="grid-form compact flow-setup-form" id="flowSetupForm">
+            <label>Ancho mojado total (m)
+              <input name="anchoTotal" type="number" min="0" step="0.01">
+            </label>
+            <label>Verticales recomendadas
+              <input name="verticalesRecomendadas" type="number" min="1" step="1">
+            </label>
+          </form>
+
+          <div class="profile-graphic-shell">
+            <div class="flow-profile-graphic" id="flowProfileGraphic" aria-label="Dibujo del perfil mojado"></div>
+          </div>
+
+          <form class="grid-form compact" id="verticalForm">
+            <label>Distancia acumulada desde margen izquierda (m)
+              <input name="distancia" type="number" min="0" step="0.01" required>
+            </label>
+            <label>Profundidad (m)
+              <input name="profundidad" type="number" min="0" step="0.001" required>
+            </label>
+            <label>Velocidad media (m/s)
+              <input name="velocidad" type="number" min="0" step="0.001" required>
+            </label>
+            <label>Observación
+              <input name="obs" placeholder="Margen, centro, turbulencia u obstáculo">
+            </label>
+            <button type="submit" class="primary">Agregar vertical</button>
+          </form>
+          <div class="vertical-list" id="verticalList"></div>
+
+          <form class="grid-form compact" id="flowMethodForm">
+            <label>Método de velocidad
+              <select name="metodoVelocidad">
+                <option>Velocímetro o molinete</option>
+                <option>Flotador superficial con factor de corrección</option>
+                <option>Estimación preliminar</option>
+              </select>
+            </label>
+            <label>Factor de corrección de flotador
+              <input name="factor" type="number" min="0" step="0.01">
+            </label>
+            <label class="wide">Notas de control de sección
+              <textarea name="notas" rows="3" placeholder="Sección recta, flujo uniforme, remolinos, turbulencia, obstrucciones o lluvia reciente"></textarea>
+            </label>
+          </form>
+
+          <div class="score-card" id="flowSummary">Seleccione una sección.</div>
+
+          <div class="flow-lock-actions">
+            <button type="button" id="lockFlowButton" class="secondary">Guardar y bloquear edición</button>
+            <button type="button" id="closeFlowButton" class="primary">Cerrar y volver al mapa</button>
+          </div>
+        </div>
+
         <h3>Secciones registradas</h3>
         <div class="list" id="sectionList"></div>
       </section>

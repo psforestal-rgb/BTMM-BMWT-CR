@@ -52,6 +52,22 @@ grandes se adapta a una distribución de dos columnas.
   puede observarse.
 - Múltiples secciones de perfil mojado, cada una con sus propias verticales,
   fotografías y cálculo de caudal.
+- Editor gráfico del perfil mojado: al ingresar el ancho mojado se dibuja la
+  horizontal de 0 al ancho (etiquetada en ambos extremos); la cantidad de
+  verticales recomendadas se marca sobre esa línea con la distancia acumulada
+  a la que debe medirse cada una. Cada vertical agregada se dibuja como una
+  profundidad hacia abajo (-y) a partir de la horizontal, con su distancia
+  acumulada editable en la lista inferior — al modificarla se redibuja el
+  perfil de inmediato. Debajo del dibujo se definen el método de velocidad y
+  su factor, y el caudal se recalcula automáticamente con cada cambio.
+- Bloqueo por sección de perfil mojado: botón **Guardar y bloquear edición**
+  que deshabilita el ancho, las verticales, el método y el factor; un botón
+  **Editar** para reabrirla a propósito y un botón **Cerrar y volver al
+  mapa**, para evitar modificaciones accidentales.
+- Observaciones y muestras de macroinvertebrados quedan bloqueadas al
+  guardarse; cada registro de la lista tiene su propio botón **Editar** para
+  volver a abrirlo (sin crear un duplicado) y un botón **Cerrar y volver al
+  mapa** junto al de guardado.
 - Respaldo ZIP con JSON, CSV, fotografías y manifiesto de asociación.
 - Migración automática de los datos básicos guardados por la versión 1.
 

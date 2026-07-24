@@ -1,4 +1,4 @@
-const CACHE_NAME = "btmm-bmwt-cr-v10-field-records";
+const CACHE_NAME = "btmm-bmwt-cr-v11-wet-profile-graphic";
 const ASSETS = [
   "./",
   "./index.html",

@@ -1204,6 +1204,25 @@ button {
   background: #eef4f0;
 }
 
+#flowSetupForm :disabled,
+#flowMethodForm :disabled,
+#verticalForm :disabled,
+.vertical-row :disabled {
+  opacity: 1;
+}
+
+#flowSetupForm input:disabled,
+#flowMethodForm input:disabled,
+#flowMethodForm select:disabled,
+#flowMethodForm textarea:disabled,
+#verticalForm input:disabled,
+.vertical-row input:disabled {
+  color: var(--ink);
+  -webkit-text-fill-color: var(--ink);
+  border-color: #cbd8d1;
+  background: #eef4f0;
+}
+
 body.map-mode {
   height: 100dvh;
   overflow: hidden;
@@ -1557,4 +1576,167 @@ body.map-mode main {
   }
 
   .macro-key-subsection { padding: 20px; }
+
+  .flow-lock-actions,
+  .record-lock-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .vertical-row {
+    grid-template-columns: auto repeat(4, minmax(0, 1fr)) auto;
+    align-items: end;
+  }
+}
+
+/* Perfil mojado: editor de sección activa y dibujo gráfico */
+.flow-editor {
+  margin: 14px 0 20px;
+}
+
+.flow-editor-empty {
+  opacity: .55;
+}
+
+.flow-setup-form {
+  margin-bottom: 12px;
+}
+
+.profile-graphic-shell {
+  margin: 4px 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 10px;
+  background: var(--card);
+}
+
+.flow-profile-graphic {
+  width: 100%;
+}
+
+.flow-profile-graphic svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.flow-graphic-empty {
+  margin: 0;
+  padding: 24px 8px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.flow-baseline {
+  stroke: var(--brand);
+  stroke-width: 2.5;
+}
+
+.flow-edge-tick {
+  stroke: var(--brand);
+  stroke-width: 2;
+}
+
+.flow-axis-label {
+  fill: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.flow-recommended-tick {
+  cursor: pointer;
+}
+
+.flow-recommended-tick line {
+  stroke: var(--gold);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
+.flow-recommended-tick text {
+  fill: #8a6a1f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.flow-recommended-tick:hover line { stroke: var(--brand-2); }
+.flow-recommended-tick:hover text { fill: var(--brand-2); }
+
+.flow-profile-line {
+  fill: none;
+  stroke: var(--brand-2);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.flow-vertical-marker { cursor: pointer; }
+
+.flow-vertical-stem {
+  stroke: var(--brand-2);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 2;
+}
+
+.flow-vertical-point {
+  fill: var(--brand);
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.flow-vertical-label {
+  fill: var(--brand);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.flow-scale-note {
+  fill: var(--muted);
+  font-size: 9.5px;
+}
+
+.vertical-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.vertical-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-items: end;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 10px;
+  background: var(--card);
+}
+
+.vertical-row label {
+  gap: 4px;
+  font-size: .8rem;
+}
+
+.vertical-row-label {
+  align-self: center;
+  color: var(--brand);
+  font-weight: 900;
+}
+
+.vertical-remove {
+  min-height: 44px;
+  color: var(--danger);
+  border-color: #e2c3bf;
+  background: #fdf1f0;
+}
+
+.vertical-empty {
+  margin: 6px 0 16px;
+  color: var(--muted);
+}
+
+.flow-lock-actions,
+.record-lock-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 16px 0 6px;
 }

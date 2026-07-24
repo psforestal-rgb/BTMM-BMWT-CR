@@ -1,4 +1,4 @@
-const CACHE_NAME = "btmm-bmwt-cr-v11-wet-profile-graphic";
+const CACHE_NAME = "btmm-bmwt-cr-v12-manual-coordinates";
 const ASSETS = [
   "./",
   "./index.html",

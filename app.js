@@ -100,7 +100,6 @@ let keyHistory = [];
 let keyResult = null;
 let keyUnknown = "";
 const photoQueues = new Map();
-const gpsSessions = new Map();
 let mediaDbPromise;
 let fieldMap = null;
 let mapRecordLayer = null;
@@ -369,322 +368,7 @@ function coordinateRow(record) {
   const crtm = record.este && record.norte
     ? `CRTM05: E ${Number(record.este).toFixed(2)} · N ${Number(record.norte).toFixed(2)} · Z ${record.altitud || "s/d"} m · ${record.crs || "EPSG:5367"}`
     : "CRTM05: sin coordenadas";
-  const wgs = record.lat && record.lon
-    ? `WGS84: ${Number(record.lat).toFixed(7)}, ${Number(record.lon).toFixed(7)} · X/Y ±${record.incertidumbreX || record.precision || "s/d"} m · Z ±${record.incertidumbreZ || "no informada"}`
-    : "WGS84: sin lectura";
-  return [crtm, wgs];
-}
-
-function convertLatLon(form) {
-  const lat = Number(form.elements.lat?.value);
-  const lon = Number(form.elements.lon?.value);
-  const crs = form.elements.crs?.value || "EPSG:5367";
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-  const [east, north] = proj4("EPSG:4326", crs, [lon, lat]);
-  form.elements.este.value = east.toFixed(2);
-  form.elements.norte.value = north.toFixed(2);
-}
-
-function convertCrtmToLatLon(form) {
-  const east = Number(form.elements.este?.value);
-  const north = Number(form.elements.norte?.value);
-  const crs = form.elements.crs?.value || "EPSG:5367";
-  if (!Number.isFinite(east) || !Number.isFinite(north)) return;
-  const [lon, lat] = proj4(crs, "EPSG:4326", [east, north]);
-  form.elements.lat.value = lat.toFixed(7);
-  form.elements.lon.value = lon.toFixed(7);
-}
-
-function stopGpsCollection(form) {
-  const session = gpsSessions.get(form);
-  if (session?.watchId !== undefined) {
-    navigator.geolocation?.clearWatch(session.watchId);
-  }
-  gpsSessions.delete(form);
-}
-
-function setCoordinateLock(form, locked) {
-  if (!form?.elements.coordLocked) return;
-  form.elements.coordLocked.value = locked ? "si" : "";
-  const card = form.querySelector(".coordinate-card");
-  card?.classList.toggle("coordinates-locked", locked);
-  const lockButton = form.querySelector(".gps-lock-button");
-  if (lockButton) {
-    lockButton.textContent = locked ? "Coordenadas bloqueadas" : "Bloquear coordenadas";
-    lockButton.disabled = locked || !coordinateQualityReady(form);
-  }
-  ["este", "norte", "altitud", "incertidumbreX", "incertidumbreY", "incertidumbreZ", "crs"]
-    .forEach((name) => {
-      if (form.elements[name]) form.elements[name].readOnly = locked;
-    });
-}
-
-function coordinateQualityReady(form) {
-  if (
-    form.elements.coordMode?.value === "gps" &&
-    (gpsSessions.get(form)?.samples.length || 0) < 3
-  ) return false;
-  const required = ["este", "norte", "altitud", "incertidumbreX", "incertidumbreY"];
-  if (!required.every((name) =>
-    form.elements[name]?.value !== "" &&
-    Number.isFinite(Number(form.elements[name].value))
-  )) return false;
-  const x = Number(form.elements.incertidumbreX.value);
-  const y = Number(form.elements.incertidumbreY.value);
-  if (x > 10 || y > 10) return false;
-  const zValue = form.elements.incertidumbreZ?.value;
-  if (form.elements.coordMode?.value === "manual") {
-    return zValue !== "" && Number(zValue) <= 10;
-  }
-  return zValue === "" || Number(zValue) <= 10;
-}
-
-function updateCoordinateLockAvailability(form) {
-  if (!form?.elements.coordLocked || form.elements.coordLocked.value === "si") return;
-  const lockButton = form.querySelector(".gps-lock-button");
-  if (lockButton) lockButton.disabled = !coordinateQualityReady(form);
-}
-
-function weightedAverage(samples, field, accuracyField) {
-  const valid = samples.filter((sample) =>
-    Number.isFinite(sample[field]) &&
-    Number.isFinite(sample[accuracyField]) &&
-    sample[accuracyField] > 0
-  );
-  if (!valid.length) return null;
-  const weightTotal = valid.reduce((sum, sample) =>
-    sum + 1 / (sample[accuracyField] ** 2), 0);
-  return valid.reduce((sum, sample) =>
-    sum + sample[field] / (sample[accuracyField] ** 2), 0) / weightTotal;
-}
-
-function sampleSpread(samples, east, north) {
-  if (!samples.length) return Infinity;
-  const squared = samples.reduce((sum, sample) =>
-    sum + (sample.east - east) ** 2 + (sample.north - north) ** 2, 0);
-  return Math.sqrt(squared / samples.length);
-}
-
-function median(values) {
-  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
-  if (!sorted.length) return Infinity;
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2
-    ? sorted[middle]
-    : (sorted[middle - 1] + sorted[middle]) / 2;
-}
-
-function applyAveragedGps(form, samples) {
-  const east = weightedAverage(samples, "east", "accuracy");
-  const north = weightedAverage(samples, "north", "accuracy");
-  if (!Number.isFinite(east) || !Number.isFinite(north)) return null;
-  const lat = weightedAverage(samples, "latitude", "accuracy");
-  const lon = weightedAverage(samples, "longitude", "accuracy");
-  const altitude = weightedAverage(samples, "altitude", "altitudeAccuracy");
-  const representativeAccuracy = median(samples.map((sample) => sample.accuracy));
-  const horizontalSpread = sampleSpread(samples, east, north);
-  const horizontalUncertainty = Math.max(representativeAccuracy, horizontalSpread);
-  const altitudeSamples = samples.filter((sample) =>
-    Number.isFinite(sample.altitude) &&
-    Number.isFinite(sample.altitudeAccuracy) &&
-    sample.altitudeAccuracy > 0
-  );
-  let verticalUncertainty = null;
-  if (altitudeSamples.length && Number.isFinite(altitude)) {
-    const representativeVertical = median(
-      altitudeSamples.map((sample) => sample.altitudeAccuracy)
-    );
-    const verticalSpread = Math.sqrt(
-      altitudeSamples.reduce((sum, sample) =>
-        sum + (sample.altitude - altitude) ** 2, 0) / altitudeSamples.length
-    );
-    verticalUncertainty = Math.max(representativeVertical, verticalSpread);
-  }
-
-  form.elements.este.value = east.toFixed(2);
-  form.elements.norte.value = north.toFixed(2);
-  form.elements.lat.value = Number(lat).toFixed(7);
-  form.elements.lon.value = Number(lon).toFixed(7);
-  form.elements.altitud.value = Number.isFinite(altitude) ? altitude.toFixed(1) :
-    (samples.find((sample) => Number.isFinite(sample.altitude))?.altitude?.toFixed(1) || "");
-  form.elements.precision.value = horizontalUncertainty.toFixed(1);
-  form.elements.incertidumbreX.value = horizontalUncertainty.toFixed(1);
-  form.elements.incertidumbreY.value = horizontalUncertainty.toFixed(1);
-  form.elements.incertidumbreZ.value = verticalUncertainty === null
-    ? ""
-    : verticalUncertainty.toFixed(1);
-  form.elements.gpsFecha.value = new Date(samples.at(-1).timestamp).toISOString();
-  return { horizontalUncertainty, verticalUncertainty };
-}
-
-function captureGps(form, button) {
-  const status = form.querySelector(".field-status");
-  if (!navigator.geolocation) {
-    status.textContent = "Este navegador no ofrece geolocalización.";
-    return;
-  }
-  stopGpsCollection(form);
-  setCoordinateLock(form, false);
-  form.elements.coordMode.value = "gps";
-  ["este", "norte", "altitud", "incertidumbreX", "incertidumbreY", "incertidumbreZ"]
-    .forEach((name) => {
-      if (form.elements[name]) form.elements[name].readOnly = true;
-    });
-  button.disabled = true;
-  button.textContent = "Colectando…";
-  status.textContent = "Iniciando colecta GPS de alta precisión…";
-  const session = { samples: [], watchId: undefined };
-  gpsSessions.set(form, session);
-  session.watchId = navigator.geolocation.watchPosition((position) => {
-    const { latitude, longitude, accuracy, altitude, altitudeAccuracy } = position.coords;
-    if (![latitude, longitude, accuracy].every(Number.isFinite)) return;
-    const [east, north] = proj4(
-      "EPSG:4326",
-      form.elements.crs?.value || "EPSG:5367",
-      [longitude, latitude]
-    );
-    session.samples.push({
-      latitude,
-      longitude,
-      accuracy: Math.max(Number(accuracy), 0.1),
-      altitude: altitude == null ? NaN : Number(altitude),
-      altitudeAccuracy: altitudeAccuracy == null ? NaN : Math.max(Number(altitudeAccuracy), 0.1),
-      east,
-      north,
-      timestamp: position.timestamp
-    });
-    if (session.samples.length > 60) session.samples.shift();
-    const quality = applyAveragedGps(form, session.samples);
-    const enoughReadings = session.samples.length >= 3;
-    const ready = enoughReadings && coordinateQualityReady(form);
-    const verticalText = quality?.verticalUncertainty === null
-      ? "Z sin incertidumbre informada por el dispositivo"
-      : `Z ±${quality.verticalUncertainty.toFixed(1)} m`;
-    status.textContent =
-      `${session.samples.length} lecturas promediadas · X/Y ±${quality.horizontalUncertainty.toFixed(1)} m · ${verticalText}. ` +
-      (ready
-        ? "Ya puede bloquear las coordenadas."
-        : (form.elements.altitud.value
-          ? "Continúe inmóvil y con cielo visible."
-          : "El dispositivo todavía no informa la altitud Z."));
-    updateCoordinateLockAvailability(form);
-  }, (error) => {
-    const messages = {
-      1: "Permiso de ubicación denegado.",
-      2: "No fue posible determinar la posición.",
-      3: "La lectura GPS agotó el tiempo de espera."
-    };
-    status.textContent = messages[error.code] || "No fue posible capturar la ubicación.";
-    stopGpsCollection(form);
-    button.disabled = false;
-    button.textContent = "Iniciar colecta GPS";
-  }, {
-    enableHighAccuracy: true,
-    timeout: 30000,
-    maximumAge: 0
-  });
-}
-
-function enhanceCoordinateCard(form) {
-  const card = form.querySelector(".coordinate-card");
-  const grid = card?.querySelector(".coordinate-grid");
-  const title = card?.querySelector(".coordinate-title");
-  if (!card || !grid || !title || form.elements.coordMode) return;
-
-  const modeLabel = document.createElement("label");
-  modeLabel.className = "coordinate-mode";
-  modeLabel.innerHTML = `
-    Forma de captura
-    <select name="coordMode">
-      <option value="manual">Escribir CRTM05 manualmente</option>
-      <option value="gps">Promediar sensores del dispositivo</option>
-    </select>
-  `;
-  grid.prepend(modeLabel);
-
-  const accuracyFields = [
-    ["incertidumbreX", "Incertidumbre X (± m)"],
-    ["incertidumbreY", "Incertidumbre Y (± m)"],
-    ["incertidumbreZ", "Incertidumbre Z (± m)"]
-  ];
-  accuracyFields.forEach(([name, labelText]) => {
-    const label = document.createElement("label");
-    label.textContent = labelText;
-    const input = document.createElement("input");
-    input.name = name;
-    input.type = "number";
-    input.min = "0";
-    input.step = "0.1";
-    input.inputMode = "decimal";
-    label.appendChild(input);
-    grid.appendChild(label);
-  });
-  const lockField = document.createElement("input");
-  lockField.type = "hidden";
-  lockField.name = "coordLocked";
-  card.appendChild(lockField);
-
-  const oldButton = title.querySelector(".gps-button");
-  const actions = document.createElement("div");
-  actions.className = "coordinate-actions";
-  const collectButton = oldButton || document.createElement("button");
-  collectButton.type = "button";
-  collectButton.className = "gps-button";
-  collectButton.textContent = "Iniciar colecta GPS";
-  const lockButton = document.createElement("button");
-  lockButton.type = "button";
-  lockButton.className = "gps-lock-button";
-  lockButton.textContent = "Bloquear coordenadas";
-  lockButton.disabled = true;
-  actions.append(collectButton, lockButton);
-  title.appendChild(actions);
-
-  const setMode = () => {
-    stopGpsCollection(form);
-    setCoordinateLock(form, false);
-    const gpsMode = form.elements.coordMode.value === "gps";
-    collectButton.hidden = !gpsMode;
-    collectButton.disabled = false;
-    collectButton.textContent = "Iniciar colecta GPS";
-    ["este", "norte", "altitud", "incertidumbreX", "incertidumbreY", "incertidumbreZ"]
-      .forEach((name) => {
-        if (form.elements[name]) form.elements[name].readOnly = gpsMode;
-      });
-    card.querySelector(".field-status").textContent = gpsMode
-      ? "Pulse “Iniciar colecta GPS”; el bloqueo se habilita al alcanzar ±10 m en X/Y."
-      : "Digite X, Y y Z en CRTM05, junto con incertidumbres de hasta ±10 m.";
-    updateCoordinateLockAvailability(form);
-  };
-  form.elements.coordMode.addEventListener("change", setMode);
-  ["este", "norte", "altitud", "incertidumbreX", "incertidumbreY", "incertidumbreZ", "crs"]
-    .forEach((name) => {
-      form.elements[name]?.addEventListener("input", () => {
-        if (form.elements.coordMode.value === "manual" && ["este", "norte", "crs"].includes(name)) {
-          convertCrtmToLatLon(form);
-        }
-        setCoordinateLock(form, false);
-        updateCoordinateLockAvailability(form);
-      });
-    });
-  lockButton.addEventListener("click", () => {
-    if (!coordinateQualityReady(form)) return;
-    stopGpsCollection(form);
-    if (form.elements.coordMode.value === "manual") {
-      convertCrtmToLatLon(form);
-      form.elements.precision.value = Math.max(
-        Number(form.elements.incertidumbreX.value),
-        Number(form.elements.incertidumbreY.value)
-      ).toFixed(1);
-      form.elements.gpsFecha.value = new Date().toISOString();
-    }
-    collectButton.disabled = false;
-    collectButton.textContent = "Iniciar nueva colecta";
-    setCoordinateLock(form, true);
-    const status = card.querySelector(".field-status");
-    status.textContent =
-      "Coordenadas bloqueadas para este registro. Para cambiarlas, inicie una nueva colecta o cambie el modo.";
-  });
-  setMode();
+  return [crtm];
 }
 
 function openMediaDb() {
@@ -724,12 +408,7 @@ function photoCoordinateSnapshot(record) {
     crs: record.crs || "EPSG:5367",
     este: record.este || "",
     norte: record.norte || "",
-    altitud: record.altitud || "",
-    lat: record.lat || "",
-    lon: record.lon || "",
-    incertidumbreX: record.incertidumbreX || record.precision || "",
-    incertidumbreY: record.incertidumbreY || record.precision || "",
-    incertidumbreZ: record.incertidumbreZ || ""
+    altitud: record.altitud || ""
   };
 }
 
@@ -984,10 +663,6 @@ function prepareRecordForm(form, recordType) {
   if (form.elements.horaInicio && !form.elements.horaInicio.value) {
     form.elements.horaInicio.value = localTimeValue();
   }
-  if (form.elements.coordMode && form.elements.coordLocked?.value !== "si") {
-    form.elements.coordMode.value = "manual";
-    form.elements.coordMode.dispatchEvent(new Event("change"));
-  }
 }
 
 function createRecordPhotoButton(label, capture, action) {
@@ -1008,10 +683,6 @@ function createRecordPhotoButton(label, capture, action) {
 
 async function addRecordFromForm(form, collection, recordType, prefix, additions = {}) {
   const isPointRecord = Boolean(RECORD_SUFFIXES[recordType]);
-  if (isPointRecord && form.elements.coordLocked?.value !== "si") {
-    alert("Bloquee primero las coordenadas con incertidumbre de hasta ±10 m.");
-    return null;
-  }
   const record = {
     ...formToObject(form),
     ...additions,
@@ -1033,8 +704,6 @@ async function addRecordFromForm(form, collection, recordType, prefix, additions
     if (submitButton) submitButton.disabled = false;
   }
   form.reset();
-  stopGpsCollection(form);
-  setCoordinateLock(form, false);
   resetQueue(form);
   saveState();
   await updateStorageEstimate();
@@ -1593,11 +1262,6 @@ function startEditingRecord(recordType, id) {
   record.locked = false;
   fillForm(form, record);
   resetQueue(form);
-  if (form.elements.coordMode) {
-    form.elements.coordMode.value = "manual";
-    form.elements.coordMode.dispatchEvent(new Event("change"));
-  }
-  setCoordinateLock(form, true);
   saveState();
   openRecordSheet(panelId);
 }
@@ -1620,8 +1284,6 @@ async function saveEditableRecord(form, collection, recordType, prefix, getEditi
       alert(`El registro se guardó, pero no todas las fotografías. ${error.message}`);
     }
     form.reset();
-    stopGpsCollection(form);
-    setCoordinateLock(form, false);
     resetQueue(form);
     setEditingId(null);
     saveState();
@@ -1709,13 +1371,11 @@ function csvEscape(value) {
 
 function buildCsv() {
   const rows = [[
-    "tipo", "codigo", "punto", "hora_inicio", "crs", "este", "norte", "altitud_m",
-    "incertidumbre_x_m", "incertidumbre_y_m", "incertidumbre_z_m",
-    "lat_wgs84", "lon_wgs84", "fecha_gps", "detalle"
+    "tipo", "codigo", "punto", "hora_inicio", "crs", "este", "norte", "altitud_m", "detalle"
   ]];
   rows.push([
     "gira_inicio", state.trip.expediente || "", state.trip.cuerpoAgua || "",
-    state.trip.horaInicio || "", "", "", "", "", "", "", "", "", "", "",
+    state.trip.horaInicio || "", "", "", "", "",
     "fecha=" + (state.trip.fecha || "") + "; hora_inicio=" + (state.trip.horaInicio || "") +
       "; area_silvestre=" + (state.trip.areaSilvestre || "") +
       "; meteorologia_inicial=" + (state.trip.meteoInicial || "") +
@@ -1723,44 +1383,36 @@ function buildCsv() {
   ]);
   (state.trip.participantes || []).forEach((participant) => rows.push([
     "participante", participant.nombre || "", participant.representada || "",
-    "", "", "", "", "", "", "", "", "", "", "", ""
+    "", "", "", "", "", ""
   ]));
   rows.push([
-    "gira_cierre", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "gira_cierre", "", "", "", "", "", "", "",
     "hora_final=" + (state.closure.horaFinal || "") +
       "; meteorologia_final=" + (state.closure.meteoFinal || "") +
       "; observaciones_finales=" + (state.closure.observacionesFinales || "")
   ]);
   state.observations.forEach((record) => rows.push([
     "observacion", record.codigo, record.tipo, record.horaInicio, record.crs,
-    record.este, record.norte, record.altitud,
-    record.incertidumbreX, record.incertidumbreY, record.incertidumbreZ,
-    record.lat, record.lon, record.gpsFecha, record.detalle || record.notas
+    record.este, record.norte, record.altitud, record.detalle || record.notas
   ]));
   state.macroSamples.forEach((record) => rows.push([
     "macroinvertebrados", record.codigo, record.punto, record.horaInicio, record.crs,
-    record.este, record.norte, record.altitud,
-    record.incertidumbreX, record.incertidumbreY, record.incertidumbreZ,
-    record.lat, record.lon, record.gpsFecha, record.familias
+    record.este, record.norte, record.altitud, record.familias
   ]));
   state.flowSections.forEach((section) => {
     const flow = calculateFlow(section);
     rows.push([
       "perfil_caudal", section.codigo, section.punto, section.horaInicio, section.crs,
       section.este, section.norte, section.altitud,
-      section.incertidumbreX, section.incertidumbreY, section.incertidumbreZ,
-      section.lat, section.lon, section.gpsFecha,
       `ancho=${section.anchoTotal}; verticales=${section.verticals.length}; caudal_m3s=${flow.cubic}`
     ]);
     section.verticals.forEach((vertical, index) => rows.push([
-      "vertical_caudal", `V${index + 1}`, section.codigo,
-      "", "", "", "", "", "", "", "", "", "", "",
+      "vertical_caudal", `V${index + 1}`, section.codigo, "", "", "", "", "",
       `distancia_m=${vertical.distancia}; profundidad_m=${vertical.profundidad}; velocidad_ms=${vertical.velocidad}; nota=${vertical.obs || ""}`
     ]));
   });
   state.identifications.forEach((record) => rows.push([
-    "identificacion", record.codigo, record.punto,
-    "", "", "", "", "", "", "", "", "", "", "",
+    "identificacion", record.codigo, record.punto, "", "", "", "", "",
     record.taxon
       ? `taxon=${record.taxon}; rango=${record.rango || ""}; puntaje=${record.puntaje || ""}; ruta=${record.rutaClave || ""}`
       : (record.candidates || []).join("; ")
@@ -1799,9 +1451,7 @@ async function exportZip() {
     const photos = await getAllPhotos();
     const manifest = [[
       "photo_id", "tipo_registro", "id_registro", "nombre", "tipo_mime", "bytes",
-      "fecha_guardado", "fecha_fotografia", "marca_agua", "crs", "este", "norte",
-      "altitud", "lat_wgs84", "lon_wgs84", "incertidumbre_x", "incertidumbre_y",
-      "incertidumbre_z"
+      "fecha_guardado", "fecha_fotografia", "marca_agua", "crs", "este", "norte", "altitud"
     ]];
     photos.forEach((photo, index) => {
       const filename = `${String(index + 1).padStart(4, "0")}_${safeFilename(photo.name)}`;
@@ -1810,11 +1460,7 @@ async function exportZip() {
         photo.id, photo.recordType, photo.recordId, photo.name, photo.type, photo.size,
         photo.createdAt, photo.takenAt || "", photo.watermarked ? "sí" : "no",
         photo.coordinateSnapshot?.crs || "", photo.coordinateSnapshot?.este || "",
-        photo.coordinateSnapshot?.norte || "", photo.coordinateSnapshot?.altitud || "",
-        photo.coordinateSnapshot?.lat || "", photo.coordinateSnapshot?.lon || "",
-        photo.coordinateSnapshot?.incertidumbreX || "",
-        photo.coordinateSnapshot?.incertidumbreY || "",
-        photo.coordinateSnapshot?.incertidumbreZ || ""
+        photo.coordinateSnapshot?.norte || "", photo.coordinateSnapshot?.altitud || ""
       ]);
     });
     zip.file("datos/manifiesto_fotografias.csv",
@@ -1882,7 +1528,6 @@ function setTripLocked(locked) {
 }
 
 function prepareFieldWorkflow() {
-  document.querySelectorAll(".point-form").forEach(enhanceCoordinateCard);
   preparePhotoControls();
 
   const macroPanel = document.getElementById("macro");
@@ -1987,24 +1632,11 @@ function openRecordSheet(panelId) {
 }
 
 function closeRecordSheet() {
-  document.querySelectorAll(".point-form").forEach((form) => {
-    if (gpsSessions.has(form)) {
-      stopGpsCollection(form);
-      const button = form.querySelector(".gps-button");
-      if (button) {
-        button.disabled = false;
-        button.textContent = "Reanudar colecta GPS";
-      }
-    }
-  });
   document.body.classList.remove("sheet-open");
   activatePanel("mapa", { scroll: false });
 }
 
 function recordLatLng(record) {
-  const lat = Number(record.lat);
-  const lon = Number(record.lon);
-  if (Number.isFinite(lat) && Number.isFinite(lon)) return [lat, lon];
   const east = Number(record.este);
   const north = Number(record.norte);
   if (!Number.isFinite(east) || !Number.isFinite(north)) return null;
@@ -2559,16 +2191,6 @@ document.getElementById("recordMenu")?.addEventListener("click", (event) => {
 });
 document.querySelectorAll("[data-open-record]").forEach((button) => {
   button.addEventListener("click", () => openRecordSheet(button.dataset.openRecord));
-});
-
-document.querySelectorAll(".gps-button").forEach((button) => {
-  button.addEventListener("click", () => captureGps(button.closest("form"), button));
-});
-
-document.querySelectorAll(".point-form").forEach((form) => {
-  ["lat", "lon", "crs"].forEach((name) => {
-    form.elements[name]?.addEventListener("change", () => convertLatLon(form));
-  });
 });
 
 document.querySelectorAll(".photo-input").forEach((input) => {

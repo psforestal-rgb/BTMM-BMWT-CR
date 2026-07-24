@@ -192,13 +192,6 @@ textarea { resize: vertical; }
   gap: 10px;
 }
 
-.field-status {
-  min-height: 1.2em;
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: .9rem;
-}
-
 .photo-field {
   border: 1px dashed #9eb5aa;
   border-radius: 10px;
@@ -727,51 +720,9 @@ button {
   gap: 10px;
 }
 
-.coordinate-actions {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-  width: 100%;
-}
-
-.gps-button,
-.gps-lock-button {
-  width: 100%;
-  min-height: 54px;
-  color: #fff;
-  border-color: var(--brand-2);
-  background: var(--brand-2);
-}
-
-.gps-button::before {
-  content: "◎ ";
-  font-size: 1.05rem;
-}
-
-.gps-lock-button {
-  border-color: var(--brand);
-  background: var(--brand);
-}
-
-.gps-lock-button:disabled {
-  color: #52665f;
-  border-color: #c5d1cc;
-  background: #e3eae6;
-}
-
-.coordinate-card.coordinates-locked {
-  border-color: #3c8d70;
-  box-shadow: inset 0 0 0 1px #3c8d70;
-  background: #eef8f2;
-}
-
 .coordinate-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px 8px;
-}
-
-.coordinate-mode {
-  grid-column: 1 / -1;
 }
 
 .coordinate-grid label {
@@ -956,21 +907,12 @@ button {
     display: flex;
   }
 
-  .coordinate-actions {
-    width: min(460px, 55%);
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .coordinate-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .coordinate-grid label:nth-child(n+3) {
     grid-column: auto;
-  }
-
-  .coordinate-mode {
-    grid-column: 1 / -1 !important;
   }
 
   .photo-source-actions {

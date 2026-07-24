@@ -28,13 +28,8 @@ grandes se adapta a una distribución de dos columnas.
   y fotografías.
 - Hora de inicio automática en todos los registros PM, MI y OB.
 - Coordenadas comunes en todos los puntos de observación, macroinvertebrados y
-  perfil mojado/caudal:
-  - Digitación manual de X, Y y Z en CRTM05 con incertidumbre declarada.
-  - Colecta de múltiples lecturas del dispositivo, promedio ponderado y
-    bloqueo cuando X/Y alcanzan una incertidumbre de hasta ±10 m.
-  - Conservación de WGS84, CRTM05, altitud, incertidumbres X/Y/Z y fecha/hora.
-- Selector entre `CR05 / CRTM05 (EPSG:5367)` y
-  `CR-SIRGAS / CRTM05 (EPSG:8908)`.
+  perfil mojado/caudal: digitación manual de Este, Norte y Altitud en CRTM05
+  (CR05 / CRTM05 · EPSG:5367), sin captura ni promediado por GPS.
 - Fotografías desde archivos del dispositivo o directamente desde la cámara,
   sin límite fijado por la aplicación y almacenadas como archivos binarios
   offline en IndexedDB. El límite real es el espacio que el navegador conceda.
@@ -80,20 +75,16 @@ persistente. Se recomienda descargar un ZIP al finalizar cada gira.
 
 ## Coordenadas
 
-El dispositivo entrega coordenadas geográficas WGS84. Durante la colecta, la
-aplicación promedia hasta 60 lecturas ponderadas por la precisión informada por
-el navegador, calcula su dispersión, conserva la lectura original y ejecuta
-localmente la proyección Transversa de Mercator de CRTM05. El bloqueo automático
-requiere al menos tres lecturas y una incertidumbre horizontal estimada de hasta
-±10 m. La incertidumbre vertical se guarda cuando el dispositivo la proporciona;
-la aplicación no afirma una precisión Z que el teléfono no haya reportado.
-Para trabajos geodésicos o catastrales se debe aplicar la transformación oficial
-y el control correspondiente; una lectura de teléfono no sustituye un
+Las coordenadas se digitan manualmente en CRTM05 (CR05 / CRTM05 · EPSG:5367):
+Este, Norte y Altitud, sin selector de sistema de referencia ni captura por
+GPS. Para la ubicación de puntos en el mapa y la marca de agua de las
+fotografías, la aplicación convierte internamente Este/Norte a WGS84 mediante
+la proyección Transversa de Mercator de CRTM05. Para trabajos geodésicos o
+catastrales se debe aplicar la transformación oficial y el control
+correspondiente; una coordenada digitada manualmente no sustituye un
 levantamiento topográfico.
 
-SNIT documenta que `EPSG:5367` corresponde a CR05/CRTM05 y que
-`EPSG:8908` corresponde a CR-SIRGAS/CRTM05, sistema que reemplaza al anterior
-desde 2018.
+SNIT documenta que `EPSG:5367` corresponde a CR05/CRTM05.
 
 ## Identificación
 
